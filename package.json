@@ -1,0 +1,77 @@
+{
+  "name": "claude-code-panel",
+  "displayName": "Claude Code Panel",
+  "description": "Painel visual com plano, timeline e diffs para o Claude Code no VS Code",
+  "version": "0.1.0",
+  "publisher": "juliobraido",
+  "private": true,
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Other"],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "claudeCodePanel",
+          "title": "Claude Code",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "claudeCodePanel": [
+        {
+          "type": "webview",
+          "id": "claudeCodePanel.view",
+          "name": "Timeline"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "claudeCodePanel.installHooks",
+        "title": "Claude Code Panel: Instalar hooks neste projeto"
+      },
+      {
+        "command": "claudeCodePanel.installHooksGlobally",
+        "title": "Claude Code Panel: Instalar hooks para todos os projetos"
+      },
+      {
+        "command": "claudeCodePanel.clearTimeline",
+        "title": "Claude Code Panel: Limpar timeline"
+      },
+      {
+        "command": "claudeCodePanel.restartServer",
+        "title": "Claude Code Panel: Reiniciar servidor de eventos"
+      }
+    ]
+  },
+  "scripts": {
+    "build": "node scripts/build.js",
+    "watch": "node scripts/build.js --watch",
+    "typecheck": "tsc --noEmit -p .",
+    "build:test-server": "node scripts/build-test-server.js",
+    "test:server": "npm run build:test-server && node scripts/test-server.js",
+    "test:markdown": "node scripts/test-markdown.js",
+    "test": "npm run test:server && npm run test:markdown",
+    "package": "npm run build && vsce package --no-dependencies --allow-missing-repository"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^2.24.0",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.4.0"
+  },
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  }
+}

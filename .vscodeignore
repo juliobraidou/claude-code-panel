@@ -1,0 +1,10 @@
+src/**
+scripts/**
+dist-test/**
+dist/**/*.map
+.vscode/**
+.gitignore
+tsconfig.json
+**/*.ts
+**/*.tsx
+!dist/**
