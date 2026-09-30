@@ -71,4 +71,15 @@ assert(!/<script>/.test(xss) && /&lt;script&gt;/.test(xss), 'HTML no texto é es
   assert(!html('Uma frase normal e comprida: com dois-pontos no meio.').includes('<strong>'), 'dois-pontos depois de frase longa não vira rótulo');
 }
 
+{
+  // A tabela do print: antes virava texto corrido com as barras.
+  const out = html(['Antes da tabela.', '', '| Medida | Antes | Agora |', '|---|---|---|', '| Sessões | 20 | 21 |', '| **Custo** | US$ 0,007 | `US$ 0,009` |', '| a \\| b | só uma |', '', 'Depois.'].join('\n'));
+  assert(out.includes('<table>') && (out.match(/<tr>/g) || []).length === 4, 'tabela markdown vira <table> com cabeçalho e 3 linhas');
+  assert(out.includes('<th>Medida</th>') && out.includes('<strong>Custo</strong>') && out.includes('<code>US$ 0,009</code>'), 'células com negrito e código inline');
+  assert(out.includes('<td>a | b</td>') && out.includes('<td></td>'), 'barra escapada fica na célula e linha curta é completada');
+  assert(!out.includes('|---|') && out.includes('<p>Depois.</p>'), 'texto depois da tabela continua normal');
+  assert(!html('| só uma linha com barras |').includes('<table>'), 'sem linha de separação não é tabela');
+  assert(html('Texto colado:\n| a | b |\n|---|---|\n| 1 | 2 |').includes('<table>'), 'tabela colada num parágrafo (sem linha em branco) também vira tabela');
+}
+
 console.log('\nTeste do markdown concluído.');

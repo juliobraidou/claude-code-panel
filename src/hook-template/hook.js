@@ -36,6 +36,7 @@ function findPort(projectDir) {
   return null;
 }
 
+// Resolve true só quando o painel recebeu o evento (servidor de pé e respondeu 200).
 function postEvent(port, payload) {
   return new Promise((resolve) => {
     const data = JSON.stringify(payload);
@@ -54,13 +55,13 @@ function postEvent(port, payload) {
       },
       (res) => {
         res.on('data', () => {});
-        res.on('end', () => resolve());
+        res.on('end', () => resolve(res.statusCode === 200));
       }
     );
-    req.on('error', () => resolve());
+    req.on('error', () => resolve(false));
     req.on('timeout', () => {
       req.destroy();
-      resolve();
+      resolve(false);
     });
     req.write(data);
     req.end();
@@ -154,20 +155,21 @@ async function main() {
   }
 
   const port = findPort(projectDir);
-  if (port) {
-    await postEvent(port, payload);
-  }
+  const panelOpen = port ? await postEvent(port, payload) : false;
 
   // Única vez em que o hook fala com o Claude (não só observa): logo depois que você
   // aprova o plano, pede que a mensagem final seja um resumo curto (feito / testes /
   // falta), que o painel mostra. Ele substitui o fechamento normal, então sai mais barato
   // que um fechamento comum. Não pede lista de tarefas: medido em 20 sessões, as
   // ferramentas de tarefa não estavam disponíveis e o pedido só gerava explicações.
-  // Custa ~70 tokens por plano. Para desligar, defina CLAUDE_PANEL_NO_NUDGE=1.
+  // Só pede quando o painel recebeu o evento: em projeto sem o painel aberto, o Claude
+  // responde do jeito normal. Custa ~130 tokens por plano. Para desligar, defina
+  // CLAUDE_PANEL_NO_NUDGE=1.
   let output = '';
   if (
     payload.hook_event_name === 'PostToolUse' &&
     payload.tool_name === 'ExitPlanMode' &&
+    panelOpen &&
     !process.env.CLAUDE_PANEL_NO_NUDGE
   ) {
     output = JSON.stringify({

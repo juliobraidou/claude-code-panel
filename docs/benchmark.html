@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Custo do Claude Code Panel</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@500;700&family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+  /* Layout: relatório de uma coluna (~720px); números no topo, dois gráficos, depois método e limites. */
+  :root {
+    --bg: #f7f8fa;
+    --surface: #ffffff;
+    --ink: #14171c;
+    --ink-2: #4a505b;
+    --ink-3: #6f7682;
+    --rule: #dde1e7;
+    --grid: #eceff3;
+    --antes: #eb6834;
+    --depois: #2a78d6;
+    --mark: #14171c;
+    --good-bg: #e7f4ec;
+    --good-ink: #1d6b3c;
+    --warn-bg: #fdf1dc;
+    --warn-ink: #8a5300;
+    --f-display: "Schibsted Grotesk", "Segoe UI", system-ui, sans-serif;
+    --f-body: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
+    --f-mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #121418; --surface: #1a1d22; --ink: #f1f3f6; --ink-2: #bcc2cc; --ink-3: #9098a5;
+      --rule: #2d323a; --grid: #252a31; --antes: #d95926; --depois: #3987e5; --mark: #f1f3f6;
+      --good-bg: #16301f; --good-ink: #8fd6a8; --warn-bg: #33270f; --warn-ink: #f0c36d;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #121418; --surface: #1a1d22; --ink: #f1f3f6; --ink-2: #bcc2cc; --ink-3: #9098a5;
+    --rule: #2d323a; --grid: #252a31; --antes: #d95926; --depois: #3987e5; --mark: #f1f3f6;
+    --good-bg: #16301f; --good-ink: #8fd6a8; --warn-bg: #33270f; --warn-ink: #f0c36d;
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 15px; line-height: 1.55; }
+  .page { max-width: 760px; margin: 0 auto; padding-inline: 20px; padding-block: 40px 64px; display: flex; flex-direction: column; gap: 40px; }
+  h1, h2 { font-family: var(--f-display); text-wrap: balance; margin: 0; }
+  h1 { font-size: clamp(28px, 5vw, 38px); line-height: 1.1; font-weight: 700; letter-spacing: -0.01em; }
+  h2 { font-size: 20px; font-weight: 700; }
+  p { margin: 0; max-width: 65ch; }
+  .eyebrow { font-family: var(--f-mono); font-size: 11.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
+  header { display: flex; flex-direction: column; gap: 12px; }
+  .lede { color: var(--ink-2); font-size: 16.5px; }
+  section { display: flex; flex-direction: column; gap: 14px; }
+  .num { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+
+  /* Números principais */
+  .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; background: var(--rule); border: 1px solid var(--rule); border-radius: 10px; overflow: hidden; }
+  .stat { background: var(--surface); padding: 16px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .stat .v { font-family: var(--f-mono); font-variant-numeric: tabular-nums; font-size: 22px; font-weight: 600; line-height: 1.2; }
+  .stat .l { font-size: 13px; color: var(--ink-2); }
+  @media (max-width: 640px) { .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+  /* Gráficos */
+  .chart { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 18px 18px 14px; display: flex; flex-direction: column; gap: 14px; position: relative; }
+  .legend { display: flex; flex-wrap: wrap; gap: 16px; font-size: 13px; color: var(--ink-2); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .sw { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+  .rows { display: flex; flex-direction: column; gap: 16px; }
+  .row { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 12px; align-items: center; }
+  .row .name { font-size: 13.5px; color: var(--ink); line-height: 1.3; }
+  .row .name small { display: block; color: var(--ink-3); font-size: 12px; }
+  .track { position: relative; display: flex; flex-direction: column; gap: 2px;
+    background-image: repeating-linear-gradient(to right, var(--grid) 0 1px, transparent 1px 25%); background-size: 100% 100%; padding-block: 2px; }
+  .bar { position: relative; height: 16px; display: flex; align-items: center; }
+  .bar i { display: block; height: 100%; min-width: 2px; border-radius: 0 4px 4px 0; }
+  .bar b { font-family: var(--f-mono); font-variant-numeric: tabular-nums; font-weight: 400; font-size: 12px; color: var(--ink-2); padding-left: 6px; white-space: nowrap; }
+  .bar.antes i { background: var(--antes); }
+  .bar.depois i { background: var(--depois); }
+  .ref { position: absolute; top: -4px; bottom: -4px; width: 0; border-left: 2px dashed var(--mark); opacity: 0.55; pointer-events: none; }
+  .axis { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 12px; }
+  .axis div { display: flex; justify-content: space-between; font-family: var(--f-mono); font-size: 11px; color: var(--ink-3); }
+  .note { font-size: 12.5px; color: var(--ink-3); }
+  @media (max-width: 520px) { .row, .axis { grid-template-columns: 96px minmax(0, 1fr); } }
+  .hit { cursor: default; }
+  .hit:focus-visible { outline: 2px solid var(--depois); outline-offset: 2px; }
+  .tip { position: absolute; pointer-events: none; background: var(--ink); color: var(--bg); font-size: 12.5px; padding: 6px 9px; border-radius: 6px; max-width: 240px; line-height: 1.4; z-index: 2; }
+
+  /* Tabela de medidas */
+  .tablewrap { overflow-x: auto; border: 1px solid var(--rule); border-radius: 10px; background: var(--surface); }
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  th { font-family: var(--f-mono); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-3); font-weight: 400; }
+  td.n { font-family: var(--f-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+  /* Achados */
+  .findings { display: flex; flex-direction: column; gap: 10px; }
+  .finding { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 12px; align-items: start; background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 14px 16px; }
+  .pill { font-family: var(--f-mono); font-size: 11px; letter-spacing: 0.04em; padding: 3px 8px; border-radius: 999px; white-space: nowrap; }
+  .pill.ok { background: var(--good-bg); color: var(--good-ink); }
+  .pill.at { background: var(--warn-bg); color: var(--warn-ink); }
+  .finding h3 { font-family: var(--f-display); font-size: 15.5px; margin: 0 0 4px; }
+  .finding p { color: var(--ink-2); font-size: 14px; }
+  ul.limits { margin: 0; padding-left: 20px; color: var(--ink-2); display: flex; flex-direction: column; gap: 6px; max-width: 65ch; }
+  code { font-family: var(--f-mono); font-size: 0.88em; background: var(--grid); padding: 1px 5px; border-radius: 4px; }
+  @media (prefers-reduced-motion: no-preference) { .bar i { transition: width 0.4s ease; } }
+</style>
+
+</head>
+<body>
+<div class="page">
+  <header>
+    <div class="eyebrow">Benchmark · atualizado em 30/09/2026</div>
+    <h1>Quanto o Claude Code Panel custa por plano</h1>
+    <p class="lede">Medido nas 21 sessões reais gravadas em <code>~/.claude/projects</code> e com o hook rodando de verdade. Os valores em dólar usam o preço de API do Claude Opus 5.5.</p>
+  </header>
+
+  <section aria-label="Números principais">
+    <div class="stats">
+      <div class="stat"><span class="v">US$ 0,009</span><span class="l">por plano aprovado, com o pedido atual</span></div>
+      <div class="stat"><span class="v">0,20%</span><span class="l">do custo de uma sessão mediana (US$ 4,28)</span></div>
+      <div class="stat"><span class="v">0 tokens</span><span class="l">nos eventos em que o hook só observa</span></div>
+      <div class="stat"><span class="v">~56 ms</span><span class="l">por evento, 42 deles só para iniciar o Node</span></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Custo por plano, antes e agora</h2>
+    <p>O único momento em que a extensão fala com o Claude é logo depois de um plano aprovado. Esse pedido gera três custos. O resumo final é o que pesava.</p>
+    <figure class="chart" id="c1" style="margin:0">
+      <div class="legend">
+        <span><i class="sw" style="background:var(--antes)"></i>Antes (três seções)</span>
+        <span><i class="sw" style="background:var(--depois)"></i>Agora (Feito/Testes/Falta)</span>
+        <span><i style="width:14px;border-top:2px dashed var(--mark);opacity:.55;display:inline-block"></i>Fechamento normal, sem extensão</span>
+      </div>
+      <div class="rows" id="c1rows"></div>
+      <div class="axis"><span></span><div id="c1axis"></div></div>
+      <figcaption class="note">US$ por plano. Cada barra soma a escrita da resposta e as releituras dela no cache nas chamadas seguintes da sessão (média medida: 63,5 chamadas depois de cada plano).</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <h2>Tempo que o hook acrescenta</h2>
+    <p>O hook roda antes e depois de cada ferramenta. Ele não gasta tokens nesses eventos, mas o Claude Code espera ele terminar.</p>
+    <figure class="chart" id="c2" style="margin:0">
+      <div class="legend">
+        <span><i class="sw" style="background:var(--depois)"></i>Mediana de 25 execuções</span>
+        <span><i style="width:14px;border-top:2px dashed var(--mark);opacity:.55;display:inline-block"></i>Node vazio: 42 ms</span>
+      </div>
+      <div class="rows" id="c2rows"></div>
+      <div class="axis"><span></span><div id="c2axis"></div></div>
+      <figcaption class="note">Milissegundos. As quatro primeiras barras são o teste local (25 execuções); a última é a duração que o Claude Code gravou nas sessões reais. O Stop de 469 ms é o pior caso do teste: sem histórico para ler, o hook espera 400 ms e tenta de novo. No uso real o histórico existe e ele fica perto dos outros.</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <h2>O que os dados mostram</h2>
+    <div class="findings">
+      <div class="finding"><span class="pill ok">ok</span><div><h3>O resumo curto corta 66% do custo por plano</h3><p>O resumo em três seções saía com mediana de 673 tokens (9 casos). O formato Feito/Testes/Falta mediu 157 e 208 tokens nas duas vezes em que rodou depois de um plano. A projeção inicial era de 75 tokens, e o valor real ficou mais que o dobro, mas continua bem abaixo de um fechamento normal, que tem mediana de 584 tokens.</p></div></div>
+      <div class="finding"><span class="pill at">atenção</span><div><h3>A lista de tarefas saiu do pedido</h3><p>Em 8 pedidos, o Claude nunca chamou TaskCreate ou TodoWrite, porque as ferramentas não estavam disponíveis. O pedido passou a trazer só o resumo, e caiu de 182 para 131 tokens.</p></div></div>
+      <div class="finding"><span class="pill ok">ok</span><div><h3>O pedido é uma fração mínima do contexto</h3><p>São 131 tokens contra uma mediana de 234.380 tokens lidos por chamada: 0,06% do contexto.</p></div></div>
+      <div class="finding"><span class="pill at">atenção</span><div><h3>O tempo pesa mais que o dinheiro</h3><p>São cerca de 113 ms por chamada de ferramenta (antes e depois). Numa sessão mediana de 65 chamadas, isso dá uns 7 segundos no total. Dos 56 ms de cada evento, 42 são só a inicialização do Node. Em uso real, o hook que devolve o pedido mediu 161 ms de mediana (8 execuções, de 146 a 226 ms).</p></div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Medidas e de onde vieram</h2>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Medida</th><th>Valor</th><th>Fonte</th></tr></thead>
+        <tbody>
+          <tr><td>Caracteres por token</td><td class="n">2,32</td><td>222 respostas só de texto: tamanho dividido pelos tokens de saída visíveis (sem raciocínio)</td></tr>
+          <tr><td>Pedido do hook, antes / depois</td><td class="n">422 → 303 car.<br>182 → 131 tok</td><td>Saída real do <code>hook.js</code> no evento ExitPlanMode</td></tr>
+          <tr><td>Resumo em três seções</td><td class="n">mediana 673 tok<br>415 a 2.164</td><td>9 mensagens finais com esse formato, tokens de saída medidos</td></tr>
+          <tr><td>Fechamento normal</td><td class="n">mediana 584 tok</td><td>221 mensagens finais sem o formato</td></tr>
+          <tr><td>Resumo no formato novo</td><td class="n">157 e 208 tok</td><td>As duas mensagens finais reais depois de um plano com o pedido novo (mediana 183)</td></tr>
+          <tr><td>Chamadas depois do pedido</td><td class="n">média 63,5</td><td>8 pedidos do hook: 140, 124, 65, 36, 14, 6, 63 e 60 chamadas até o fim da sessão</td></tr>
+          <tr><td>Duração real do hook com retorno</td><td class="n">mediana 161 ms</td><td>8 registros <code>hook_success</code> gravados pelo Claude Code</td></tr>
+          <tr><td>Chamadas de lista de tarefas</td><td class="n">0</td><td>Todas as chamadas de ferramenta das 21 sessões, depois de 8 pedidos</td></tr>
+          <tr><td>Sessão mediana</td><td class="n">US$ 4,28<br>65 chamadas</td><td>Uso real de 19 sessões com chamadas, a preço Opus 5.5</td></tr>
+          <tr><td>Preço Opus 5.5 (por milhão)</td><td class="n">US$ 4 entrada<br>US$ 20 saída<br>US$ 0,20 cache</td><td>Tabela de preços da API. A escrita no cache de 1 hora conta como 2× a entrada.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>Limites desta medida</h2>
+    <ul class="limits">
+      <li>O formato novo de resumo só rodou duas vezes até agora. A mediana dele pode mudar com mais uso.</li>
+      <li>Num plano Pro ou Max não existe cobrança por token. Os tokens contam para o limite de uso, e o dólar aqui serve como régua de comparação.</li>
+      <li>As sessões usaram o Opus 5 e o Opus 5.5. Todas foram precificadas como Opus 5.5.</li>
+      <li>A latência do teste foi medida nesta máquina, contra um servidor de teste local. O Claude Code só grava a duração real quando o hook devolve algo.</li>
+      <li>As releituras dependem do tamanho da conversa: quanto mais longa a sessão depois do plano, mais o pedido e o resumo são relidos do cache.</li>
+    </ul>
+  </section>
+</div>
+
+<script>
+(function () {
+  var fmtUsd = function (v) { return 'US$ ' + v.toFixed(4).replace('.', ','); };
+  var tip = null;
+  function showTip(chart, el, text) {
+    if (!tip) { tip = document.createElement('div'); tip.className = 'tip'; tip.setAttribute('role', 'status'); }
+    chart.appendChild(tip);
+    tip.textContent = text;
+    var c = chart.getBoundingClientRect(), r = el.getBoundingClientRect();
+    var left = Math.min(r.left - c.left, c.width - 250);
+    tip.style.left = Math.max(8, left) + 'px';
+    tip.style.top = (r.top - c.top - tip.offsetHeight - 6) + 'px';
+  }
+  function hideTip() { if (tip && tip.parentNode) tip.parentNode.removeChild(tip); }
+
+  function render(opts) {
+    var chart = document.getElementById(opts.chart);
+    var rows = document.getElementById(opts.rows);
+    opts.data.forEach(function (d) {
+      var row = document.createElement('div'); row.className = 'row';
+      row.innerHTML = '<div class="name">' + d.name + (d.sub ? '<small>' + d.sub + '</small>' : '') + '</div>';
+      var track = document.createElement('div'); track.className = 'track';
+      d.bars.forEach(function (b) {
+        var bar = document.createElement('div');
+        bar.className = 'bar hit ' + b.cls; bar.tabIndex = 0;
+        var pct = Math.max(0, Math.min(100, (b.v / opts.max) * 100));
+        bar.innerHTML = '<i style="width:' + pct + '%"></i><b>' + opts.fmt(b.v) + '</b>';
+        bar.setAttribute('aria-label', d.name + ', ' + b.label + ': ' + opts.fmt(b.v));
+        var t = d.name + ' · ' + b.label + ': ' + opts.fmt(b.v) + (b.detail ? ' · ' + b.detail : '');
+        bar.addEventListener('mouseenter', function () { showTip(chart, bar, t); });
+        bar.addEventListener('focus', function () { showTip(chart, bar, t); });
+        bar.addEventListener('mouseleave', hideTip);
+        bar.addEventListener('blur', hideTip);
+        track.appendChild(bar);
+      });
+      if (d.ref !== undefined) {
+        var ref = document.createElement('div'); ref.className = 'ref';
+        ref.style.left = (d.ref / opts.max * 100) + '%';
+        track.appendChild(ref);
+      }
+      row.appendChild(track);
+      rows.appendChild(row);
+    });
+    var axis = document.getElementById(opts.axis);
+    opts.ticks.forEach(function (t) { var s = document.createElement('span'); s.textContent = opts.tick(t); axis.appendChild(s); });
+  }
+
+  render({
+    chart: 'c1', rows: 'c1rows', axis: 'c1axis', max: 0.025, fmt: fmtUsd,
+    ticks: [0, 0.005, 0.01, 0.015, 0.02, 0.025], tick: function (t) { return t === 0 ? '0' : t.toFixed(3).replace('.', ','); },
+    data: [
+      { name: 'Resumo final', sub: 'saída + releituras', ref: 0.0191, bars: [
+        { cls: 'antes', label: 'antes', v: 0.0220, detail: '673 tokens' },
+        { cls: 'depois', label: 'agora', v: 0.0060, detail: '~183 tokens (2 medidas)' } ] },
+      { name: 'Pedido do hook', sub: 'entrada + releituras', bars: [
+        { cls: 'antes', label: 'antes', v: 0.0038, detail: '182 tokens' },
+        { cls: 'depois', label: 'agora', v: 0.0027, detail: '131 tokens' } ] },
+      { name: 'Lista de tarefas', sub: '0 chamadas medidas', bars: [
+        { cls: 'antes', label: 'antes', v: 0, detail: 'nenhuma chamada em 21 sessões' },
+        { cls: 'depois', label: 'agora', v: 0, detail: 'o pedido não pede mais a lista' } ] }
+    ]
+  });
+
+  render({
+    chart: 'c2', rows: 'c2rows', axis: 'c2axis', max: 500, fmt: function (v) { return v + ' ms'; },
+    ticks: [0, 125, 250, 375, 500], tick: function (t) { return String(t); },
+    data: [
+      { name: 'PreToolUse', ref: 42, bars: [{ cls: 'depois', label: 'mediana', v: 57, detail: 'p90 66 ms' }] },
+      { name: 'PostToolUse', ref: 42, bars: [{ cls: 'depois', label: 'mediana', v: 56, detail: 'p90 59 ms' }] },
+      { name: 'ExitPlanMode', sub: 'devolve o pedido', ref: 42, bars: [{ cls: 'depois', label: 'mediana', v: 55, detail: 'p90 62 ms' }] },
+      { name: 'Stop', sub: 'pior caso do teste', ref: 42, bars: [{ cls: 'depois', label: 'mediana', v: 469, detail: 'inclui 400 ms de nova tentativa' }] },
+      { name: 'ExitPlanMode', sub: 'uso real, 8 vezes', ref: 42, bars: [{ cls: 'depois', label: 'mediana', v: 161, detail: 'de 146 a 226 ms' }] }
+    ]
+  });
+})();
+</script>
+
+</body>
+</html>

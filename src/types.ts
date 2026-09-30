@@ -14,12 +14,16 @@ export interface HookPayload {
   [key: string]: unknown;
 }
 
-export type PlanItemStatus = 'pending' | 'in_progress' | 'completed';
+// 'unconfirmed': o turno terminou e o painel não viu nenhuma evidência de que o passo foi
+// feito (nem arquivo citado editado, nem comando citado rodado). Só existe na estimativa.
+export type PlanItemStatus = 'pending' | 'in_progress' | 'completed' | 'unconfirmed';
 
 export interface PlanItem {
   id: string;
   text: string;
   status: PlanItemStatus;
+  // Houve evidência deste passo (arquivo ou comando citado nele). Só na estimativa.
+  seen?: boolean;
 }
 
 export type ActionKind =
@@ -63,6 +67,14 @@ export interface HistoryEntry {
   archivedAt: number;
 }
 
+// Uma conversa do Claude Code, para o seletor do painel.
+export interface SessionInfo {
+  id: string;
+  label: string;
+  running: boolean;
+  lastActivity: number;
+}
+
 export interface PanelState {
   planItems: PlanItem[];
   // De onde veio a checklist: 'plan' = extraída do texto do plano (ExitPlanMode),
@@ -81,6 +93,11 @@ export interface PanelState {
   summary?: { text: string; at: number };
   // Trabalhos anteriores, do mais recente para o mais antigo. Sobrevive ao /clear.
   history: HistoryEntry[];
+  // Só na visão enviada ao painel: as conversas conhecidas, qual está na tela e se o painel
+  // está seguindo a última conversa usada (em vez de uma escolhida à mão).
+  sessions?: SessionInfo[];
+  sessionId?: string;
+  sessionAuto?: boolean;
   actions: TimelineAction[];
   running: boolean;
   lastUpdated: number;

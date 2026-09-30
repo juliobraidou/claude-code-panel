@@ -38,8 +38,24 @@ const panelConfig = {
   logLevel: 'info',
 };
 
+// Instalador dos hooks em um arquivo só (release/install-hooks.js), com o hook.js embutido.
+function cliConfig() {
+  return {
+    entryPoints: ['src/cli/install-hooks.ts'],
+    bundle: true,
+    outfile: 'release/install-hooks.js',
+    platform: 'node',
+    format: 'cjs',
+    target: 'node18',
+    banner: { js: '#!/usr/bin/env node' },
+    define: { __HOOK_SOURCE__: JSON.stringify(fs.readFileSync(path.join('src', 'hook-template', 'hook.js'), 'utf8')) },
+    logLevel: 'info',
+  };
+}
+
 async function run() {
   copyHookScript();
+  await esbuild.build(cliConfig());
   if (watch) {
     const ctxExt = await esbuild.context(extensionConfig);
     const ctxPanel = await esbuild.context(panelConfig);

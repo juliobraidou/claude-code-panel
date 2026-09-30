@@ -19,11 +19,18 @@ function PlanList({ items }: { items: PanelState['planItems'] }) {
   return (
     <ul className="plan-list">
       {items.map((item) => (
-        <li key={item.id} className={`plan-item plan-item--${item.status}`}>
+        <li
+          key={item.id}
+          className={`plan-item plan-item--${item.status}`}
+          title={item.status === 'unconfirmed' ? 'O turno terminou sem sinal deste passo: nenhum arquivo ou comando citado nele foi usado.' : undefined}
+        >
           <span className="plan-item-icon">
-            {item.status === 'completed' ? '✓' : item.status === 'in_progress' ? '●' : '○'}
+            {item.status === 'completed' ? '✓' : item.status === 'in_progress' ? '●' : item.status === 'unconfirmed' ? '?' : '○'}
           </span>
-          <span>{item.text}</span>
+          <span>
+            {item.text}
+            {item.status === 'unconfirmed' && <span className="plan-item-tag">não confirmado</span>}
+          </span>
         </li>
       ))}
     </ul>
@@ -39,13 +46,17 @@ function PlanSection({ items, source }: { items: PanelState['planItems']; source
     );
   }
   const done = items.filter((i) => i.status === 'completed').length;
+  const unconfirmed = items.filter((i) => i.status === 'unconfirmed').length;
   const pct = Math.round((done / items.length) * 100);
 
   return (
     <div className="plan">
       <div className="plan-header">
         <span>{source === 'plan' ? 'Plano (estimado)' : 'Plano'}</span>
-        <span>{done} de {items.length}</span>
+        <span>
+          {done} de {items.length}
+          {unconfirmed > 0 && <span className="plan-header-warn"> · {unconfirmed} sem confirmação</span>}
+        </span>
       </div>
       <div className="progress-track">
         <div className="progress-fill" style={{ width: `${pct}%` }} />
@@ -120,6 +131,63 @@ function HistoryItem({ entry, onDelete }: { entry: HistoryEntry; onDelete: (id: 
   );
 }
 
+// Aparece só com mais de uma conversa do Claude no projeto. "Seguir a última conversa" mostra
+// sempre a conversa em que você escreveu por último; escolher uma fixa o painel nela.
+function SessionPicker({ state }: { state: PanelState }) {
+  const sessions = state.sessions ?? [];
+  if (sessions.length < 2) return null;
+  const choose = (id: string) => getVsCodeApi().postMessage({ type: 'selectSession', id: id || undefined });
+  return (
+    <div className="session-picker">
+      <label htmlFor="session-select">Conversa</label>
+      <select id="session-select" value={state.sessionAuto ? '' : state.sessionId ?? ''} onChange={(e) => choose(e.target.value)}>
+        <option value="">Seguir a última conversa</option>
+        {sessions.map((s) => (
+          <option key={s.id} value={s.id}>
+            {s.running ? '● ' : ''}
+            {s.label}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+// Sem acento e em minúsculas, para "revisao" achar "Revisão".
+function normalize(text: string): string {
+  return text.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+}
+
+function HistorySection({ history }: { history: HistoryEntry[] }) {
+  const [query, setQuery] = React.useState('');
+  const q = normalize(query.trim());
+  // Busca no título, nos passos e no resumo de cada trabalho.
+  const shown = q
+    ? history.filter((h) => normalize([h.title, ...h.items.map((i) => i.text), h.summary?.text ?? ''].join(' ')).includes(q))
+    : history;
+
+  return (
+    <div className="history">
+      <div className="history-header">Anteriores</div>
+      {history.length >= 4 && (
+        <input
+          id="history-search"
+          className="history-search"
+          type="search"
+          placeholder="Buscar nos trabalhos anteriores"
+          aria-label="Buscar nos trabalhos anteriores"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+      )}
+      {shown.map((entry) => (
+        <HistoryItem key={entry.id} entry={entry} onDelete={(id) => getVsCodeApi().postMessage({ type: 'deleteHistory', id })} />
+      ))}
+      {q && shown.length === 0 && <div className="empty">Nada encontrado para "{query.trim()}".</div>}
+    </div>
+  );
+}
+
 export function App() {
   const [state, setState] = React.useState<PanelState | null>(null);
 
@@ -149,24 +217,15 @@ export function App() {
         <span className="status-text">{state.running ? activity ?? 'Executando' : 'Ocioso'}</span>
       </div>
 
+      <SessionPicker state={state} />
+
       {state.notification && <div className="notification">{state.notification}</div>}
 
       <PlanSection items={state.planItems} source={state.planSource} />
 
       {state.summary && <SummarySection summary={state.summary} />}
 
-      {state.history?.length > 0 && (
-        <div className="history">
-          <div className="history-header">Anteriores</div>
-          {state.history.map((entry) => (
-            <HistoryItem
-              key={entry.id}
-              entry={entry}
-              onDelete={(id) => getVsCodeApi().postMessage({ type: 'deleteHistory', id })}
-            />
-          ))}
-        </div>
-      )}
+      {state.history?.length > 0 && <HistorySection history={state.history} />}
     </div>
   );
 }

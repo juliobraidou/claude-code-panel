@@ -3,12 +3,10 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { installHooks, writePortFile } from './installHooks';
 import { startServer, PanelServer } from './server';
-import { toPersisted } from './state';
-import { PanelState, PersistedState } from './types';
+import { PanelState } from './types';
 
 let panelServer: PanelServer | undefined;
 const STATE_KEY = 'claudeCodePanel.state';
-let lastSaved: PersistedState | undefined;
 let currentProvider: ClaudeCodePanelProvider | undefined;
 
 export async function activate(context: vscode.ExtensionContext) {
@@ -95,23 +93,12 @@ export async function activate(context: vscode.ExtensionContext) {
 }
 
 async function bootServer(context: vscode.ExtensionContext, provider: ClaudeCodePanelProvider) {
-  // Salvo por projeto (workspaceState): cada pasta tem o próprio plano e histórico.
-  const initialState = context.workspaceState.get<PersistedState>(STATE_KEY);
-  lastSaved = initialState;
+  // Salvo por projeto (workspaceState): cada pasta tem as próprias conversas e histórico.
+  // O servidor só chama onPersist quando algo salvo mudou; "rodando" e ações não contam.
   panelServer = await startServer({
-    initialState,
-    onStateChange: (state) => {
-      provider.pushState(state);
-      // Grava só quando algo que persiste mudou; ações e "rodando" mudam o tempo todo.
-      const snapshot = toPersisted(state);
-      const changed =
-        !lastSaved ||
-        (Object.keys(snapshot) as (keyof PersistedState)[]).some((k) => snapshot[k] !== lastSaved![k]);
-      if (changed) {
-        lastSaved = snapshot;
-        void context.workspaceState.update(STATE_KEY, snapshot);
-      }
-    },
+    initialState: context.workspaceState.get(STATE_KEY),
+    onStateChange: (state) => provider.pushState(state),
+    onPersist: (saved) => void context.workspaceState.update(STATE_KEY, saved),
   });
 
   // Publica a porta em cada pasta aberta, para o hook.js localizar o servidor.
@@ -149,6 +136,9 @@ class ClaudeCodePanelProvider implements vscode.WebviewViewProvider {
       }
       if (message?.type === 'deleteHistory' && typeof message.id === 'string') {
         panelServer?.deleteHistory(message.id);
+      }
+      if (message?.type === 'selectSession') {
+        panelServer?.selectSession(typeof message.id === 'string' ? message.id : undefined);
       }
       if (message?.type === 'openFile' && typeof message.filePath === 'string') {
         const uri = vscode.Uri.file(message.filePath);

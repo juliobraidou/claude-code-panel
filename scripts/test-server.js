@@ -207,7 +207,34 @@ async function main() {
   assert(s.planItems.some((i) => i.status !== 'completed'), 'ainda não terminou: passos seguem abertos');
   await post(port, '/hook', { hook_event_name: 'Stop' });
   s = (await get(port, '/state')).body;
-  assert(s.planItems.length === 4 && s.planItems.every((i) => i.status === 'completed'), 'Stop depois de executar conclui os 4 passos');
+  assert(s.planItems.length === 4 && s.planItems[0].status === 'completed', 'Stop conclui o passo com evidência (comando "npm start" citado nele)');
+  assert(s.planItems.slice(1).every((i) => i.status === 'unconfirmed'), 'passos sem evidência ficam "não confirmados", não concluídos');
+
+
+  // Evidência por comando e correção num turno seguinte.
+  {
+    const sv = await startServer({ preferredPort: 48230 });
+    const P = sv.port;
+    const pl = ['1. Editar `src/a.js`', '2. Rodar `npm test` e conferir', '3. Revisar com calma'].join('\n');
+    await post(P, '/hook', { hook_event_name: 'UserPromptSubmit' });
+    await post(P, '/hook', { hook_event_name: 'PreToolUse', tool_name: 'ExitPlanMode', tool_input: { plan: pl } });
+    await post(P, '/hook', { hook_event_name: 'PostToolUse', tool_name: 'ExitPlanMode', tool_input: { plan: pl }, tool_response: {} });
+    await post(P, '/hook', { hook_event_name: 'PostToolUse', tool_name: 'Write', tool_input: { file_path: 'C:\\p\\src\\a.js', content: 'x' }, tool_response: {} });
+    await post(P, '/hook', { hook_event_name: 'Stop' });
+    let st = (await get(P, '/state')).body;
+    assert(st.planItems.map((i) => i.status).join() === 'completed,unconfirmed,unconfirmed', 'só o passo com arquivo editado fica concluído');
+    await post(P, '/hook', { hook_event_name: 'UserPromptSubmit' });
+    await post(P, '/hook', { hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_input: { command: 'cd proj && npm test 2>&1 | grep ok' }, tool_response: {} });
+    st = (await get(P, '/state')).body;
+    assert(st.planItems[1].status === 'in_progress', 'comando citado no passo ("npm test", com cd, pipe e 2>&1) conta como evidência');
+    await post(P, '/hook', { hook_event_name: 'Stop' });
+    st = (await get(P, '/state')).body;
+    assert(st.planItems.map((i) => i.status).join() === 'completed,completed,unconfirmed', 'evidência num turno seguinte corrige o passo; o sem evidência segue não confirmado');
+    await post(P, '/hook', { hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_input: { command: 'ls' }, tool_response: {} });
+    st = (await get(P, '/state')).body;
+    assert(st.planItems[2].status === 'unconfirmed', 'comando curto ou não citado não vira evidência');
+    await sv.close();
+  }
 
   // --- TaskCreate / TaskUpdate (ferramentas de tarefa do Claude Code atual) ---
   await post(port, '/clear', {});
@@ -315,7 +342,7 @@ async function main() {
   s = (await get(port, '/state')).body;
   assert(s.history.length === base + 1, 'plano novo arquiva o anterior');
   assert(s.history[0].summary && s.history[0].summary.text === finalText, 'histórico guarda o resumo');
-  assert(s.history[0].items.length === 4 && s.history[0].items.every((i) => i.status === 'completed'), 'histórico guarda a checklist final');
+  assert(s.history[0].items.length === 4 && s.history[0].items.every((i) => i.status === 'unconfirmed'), 'histórico guarda a checklist final (sem evidência, nada marcado como feito)');
   assert(!s.summary && s.planItems.length === 3, 'plano atual começa limpo, sem o resumo antigo');
 
   await post(port, '/clear', {});
@@ -445,6 +472,54 @@ async function main() {
     await sv.close();
   }
 
+  // --- Sessões: dois chats no mesmo projeto não se misturam ---
+  {
+    let saved;
+    const sv = await startServer({ preferredPort: 48240, onPersist: (p) => (saved = p) });
+    const P = sv.port;
+    const ev = (session_id, body) => post(P, '/hook', { session_id, ...body });
+    await ev('A', { hook_event_name: 'UserPromptSubmit', prompt: 'Crie a API de usuários' });
+    await ev('A', { hook_event_name: 'PreToolUse', tool_name: 'ExitPlanMode', tool_input: { plan: '1. Plano A um\n2. Plano A dois' } });
+    await ev('B', { hook_event_name: 'UserPromptSubmit', prompt: 'Corrija o CSS do header' });
+    await ev('B', { hook_event_name: 'PostToolUse', tool_name: 'Edit', tool_input: { file_path: '/p/h.css', old_string: 'a', new_string: 'b' }, tool_response: {} });
+    await ev('A', { hook_event_name: 'PostToolUse', tool_name: 'ExitPlanMode', tool_input: { plan: '1. Plano A um\n2. Plano A dois' }, tool_response: {} });
+    await ev('B', { hook_event_name: 'Stop', last_message: 'CSS corrigido.' });
+    let st = (await get(P, '/state')).body;
+    assert(st.sessionId === 'B' && st.sessionAuto === true, 'painel segue a última conversa em que você escreveu (B)');
+    assert(st.planItems.length === 0 && st.summary.text === 'CSS corrigido.', 'a sessão B não mostra o plano da A');
+    assert(st.sessions.length === 2 && st.sessions[0].label === 'Corrija o CSS do header', 'seletor lista as duas conversas pelo pedido inicial');
+    assert(st.sessions.find((x) => x.id === 'A').running === true && st.sessions.find((x) => x.id === 'B').running === false, 'cada conversa tem o próprio "rodando"');
+
+    sv.selectSession('A');
+    st = (await get(P, '/state')).body;
+    assert(st.sessionId === 'A' && st.sessionAuto === false && st.planItems.length === 2 && st.planItems[0].status === 'in_progress', 'escolher a conversa A mostra o plano dela');
+    await ev('B', { hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_input: { command: 'ls' }, tool_response: {} });
+    st = (await get(P, '/state')).body;
+    assert(st.sessionId === 'A', 'atividade da B em segundo plano não tira a A da tela');
+    await ev('B', { hook_event_name: 'UserPromptSubmit', prompt: 'mais uma' });
+    st = (await get(P, '/state')).body;
+    assert(st.sessionId === 'B' && st.sessionAuto === true, 'escrever na B volta a seguir a última conversa');
+
+    assert(saved && saved.version === 2 && saved.sessions.A.state.planItems.length === 2 && saved.sessions.B.state.summary.text === 'CSS corrigido.', 'estado salvo guarda as duas conversas');
+    await sv.close();
+    const sv2 = await startServer({ preferredPort: 48250, initialState: JSON.parse(JSON.stringify(saved)) });
+    st = (await get(sv2.port, '/state')).body;
+    assert(st.sessions.length === 2 && st.summary.text === 'CSS corrigido.' && st.running === false, 'reabrir restaura as conversas sem ficar "rodando"');
+    sv2.selectSession('A');
+    st = (await get(sv2.port, '/state')).body;
+    assert(st.planItems[0].text === 'Plano A um', 'reabrir restaura o plano da outra conversa');
+
+    // Limite de 8 conversas: a mais antiga sai e o trabalho dela vai para "Anteriores".
+    for (let i = 0; i < 8; i++) {
+      await post(sv2.port, '/hook', { session_id: 'S' + i, hook_event_name: 'UserPromptSubmit', prompt: 'p' + i });
+      await new Promise((r) => setTimeout(r, 2));
+    }
+    st = (await get(sv2.port, '/state')).body;
+    assert(st.sessions.length === 8 && !st.sessions.some((x) => x.id === 'A'), 'guarda no máximo 8 conversas');
+    assert(st.history.some((h) => h.summary && h.summary.text === 'CSS corrigido.') || st.history.some((h) => h.title === 'Plano A um'), 'conversa que sai tem o trabalho arquivado');
+    await sv2.close();
+  }
+
   // --- Auditoria: segurança, instalação sem duplicatas, diff grande, caminhos Windows ---
   {
     const srv2 = await startServer({ preferredPort: 48200 });
@@ -501,25 +576,36 @@ async function main() {
     await srv3.close();
   }
 
-  // --- hook.js: só o ExitPlanMode aprovado devolve contexto para o Claude ---
-  const { spawnSync } = require('child_process');
-  const hookPath = path.join(__dirname, '..', 'src', 'hook-template', 'hook.js');
-  const runHook = (payload, env = {}) =>
-    spawnSync('node', [hookPath], {
-      input: JSON.stringify(payload),
-      env: { ...process.env, CLAUDE_PROJECT_DIR: '/tmp/sem-projeto-aqui', ...env },
-      encoding: 'utf8',
-    });
+  // --- hook.js: só o ExitPlanMode aprovado, com o painel aberto, devolve contexto ao Claude ---
+  {
+    const hookPath = path.join(__dirname, '..', 'src', 'hook-template', 'hook.js');
+    // Assíncrono: o servidor de teste roda neste mesmo processo e precisa responder.
+    const runHook = (payload, projectDir, env = {}) =>
+      new Promise((resolve) => {
+        const child = spawn('node', [hookPath], { env: { ...process.env, CLAUDE_PROJECT_DIR: projectDir, ...env } });
+        let stdout = '';
+        child.stdout.on('data', (d) => (stdout += d));
+        child.on('close', (status) => resolve({ status, stdout }));
+        child.stdin.end(JSON.stringify(payload));
+      });
+    const sv = await startServer({ preferredPort: 48260 });
+    const open = fs.mkdtempSync(path.join(os.tmpdir(), 'ccp-open-'));
+    fs.mkdirSync(path.join(open, '.vscode'));
+    fs.writeFileSync(path.join(open, '.vscode', 'claude-code-panel.port'), String(sv.port));
+    const closed = path.join(os.tmpdir(), 'ccp-sem-painel-' + Date.now());
+    const plan = { hook_event_name: 'PostToolUse', tool_name: 'ExitPlanMode' };
 
-  const nudged = runHook({ hook_event_name: 'PostToolUse', tool_name: 'ExitPlanMode' });
-  assert(nudged.status === 0, 'hook.js sai com código 0 mesmo sem servidor');
-  assert(/Feito:/.test(nudged.stdout) && !/TodoWrite|TaskCreate/.test(nudged.stdout) && JSON.parse(nudged.stdout).hookSpecificOutput.hookEventName === 'PostToolUse', 'ExitPlanMode aprovado devolve additionalContext válido');
-
-  const silent = runHook({ hook_event_name: 'PostToolUse', tool_name: 'Edit' });
-  assert(silent.status === 0 && silent.stdout === '', 'outros eventos não devolvem nada ao Claude');
-
-  const optOut = runHook({ hook_event_name: 'PostToolUse', tool_name: 'ExitPlanMode' }, { CLAUDE_PANEL_NO_NUDGE: '1' });
-  assert(optOut.status === 0 && optOut.stdout === '', 'CLAUDE_PANEL_NO_NUDGE=1 desliga o pedido');
+    const nudged = await runHook(plan, open);
+    assert(nudged.status === 0 && /Feito:/.test(nudged.stdout) && !/TodoWrite|TaskCreate/.test(nudged.stdout) && JSON.parse(nudged.stdout).hookSpecificOutput.hookEventName === 'PostToolUse', 'com o painel aberto, o plano aprovado devolve o pedido do resumo');
+    const noPanel = await runHook(plan, closed);
+    assert(noPanel.status === 0 && noPanel.stdout === '', 'sem o painel aberto, o hook não pede nada ao Claude (e sai com 0)');
+    const silent = await runHook({ hook_event_name: 'PostToolUse', tool_name: 'Edit' }, open);
+    assert(silent.status === 0 && silent.stdout === '', 'outros eventos não devolvem nada ao Claude');
+    const optOut = await runHook(plan, open, { CLAUDE_PANEL_NO_NUDGE: '1' });
+    assert(optOut.status === 0 && optOut.stdout === '', 'CLAUDE_PANEL_NO_NUDGE=1 desliga o pedido');
+    await sv.close();
+    fs.rmSync(open, { recursive: true, force: true });
+  }
 
   console.log('\nTeste concluído.');
 }

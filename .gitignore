@@ -3,5 +3,7 @@ dist/
 dist-test/
 out/
 *.vsix
+# Os arquivos para baixar ficam versionados em release/.
+!release/*.vsix
 .vscode-test/
 

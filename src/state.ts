@@ -27,7 +27,7 @@ function titleFromSummary(text: string): string {
 
 // Guarda o trabalho que está na tela no histórico. Um plano proposto e nunca iniciado
 // (rejeitado ou substituído) não vale guardar; um que rodou ou ganhou resumo, sim.
-function archiveCurrent(state: PanelState): HistoryEntry[] {
+export function archiveCurrent(state: PanelState): HistoryEntry[] {
   const history = state.history ?? [];
   const started = state.planItems.some((i) => i.status !== 'pending');
   if (!state.summary && (state.planItems.length === 0 || !started)) return history;
@@ -157,6 +157,19 @@ function planItemsFromTodos(todos: unknown): PlanItem[] | undefined {
   }));
 }
 
+// A lista terminou: não há passo pendente nem em andamento (concluídos ou não confirmados).
+export function isFinished(items: PlanItem[]): boolean {
+  return items.length > 0 && items.every((i) => i.status === 'completed' || i.status === 'unconfirmed');
+}
+
+// Parte do comando que identifica o que foi rodado: antes de pipe, &&, ; e sem redirecionamentos
+// ("npm test 2>&1 | grep ok" -> "npm test"). Tira um "cd pasta &&" do começo.
+function commandCore(command: string): string {
+  const segments = command.split(/\|\||&&|;|\|/).map((s) => s.trim()).filter(Boolean);
+  const main = segments.find((s) => !/^cd\s/.test(s)) ?? '';
+  return main.replace(/\s+\d?>>?\s*\S+/g, '').replace(/\s+\d?>&\d/g, '').trim().toLowerCase();
+}
+
 // Aplica um evento de hook ao estado e devolve um novo estado (imutável).
 export function applyHookEvent(state: PanelState, payload: HookPayload): PanelState {
   let next = applyPlanLogic(applyBase(state, payload), payload);
@@ -166,7 +179,7 @@ export function applyHookEvent(state: PanelState, payload: HookPayload): PanelSt
   // comando) neste turno, com ou sem plano na tela. Uma resposta de conversa não mexe no
   // resumo. O resumo anterior não se perde: vai para o histórico.
   if (event === 'UserPromptSubmit') {
-    const planDone = next.planItems.length > 0 && next.planItems.every((i) => i.status === 'completed');
+    const planDone = isFinished(next.planItems);
     next = { ...next, turnActions: 0, planDoneBeforeTurn: planDone };
   }
   if (event === 'PostToolUse' && ACTION_TOOLS.has(payload.tool_name ?? '')) {
@@ -235,7 +248,7 @@ function applyTaskTool(
 
     // A primeira tarefa criada assume o lugar do plano semeado pelo ExitPlanMode. Se a
     // lista anterior já estava toda concluída, é trabalho novo: começa uma lista limpa.
-    const previousDone = state.planItems.length > 0 && state.planItems.every((i) => i.status === 'completed');
+    const previousDone = isFinished(state.planItems);
     const items = state.planSource === 'todo' && !previousDone ? state.planItems : [];
 
     const numericIds = items.map((i) => Number(i.id)).filter((n) => Number.isFinite(n));
@@ -324,28 +337,38 @@ function applyPlanLogic(state: PanelState, payload: HookPayload): PanelState {
     next = { ...next, planActions: (next.planActions ?? 0) + 1 };
   }
 
-  // Estimativa 1: editar um arquivo citado num passo marca esse passo como em andamento
-  // e conclui os anteriores (o plano costuma ser sequencial).
+  // Evidência: editar um arquivo citado num passo, ou rodar um comando citado nele, marca
+  // esse passo como em andamento (com evidência) e conclui os anteriores, porque o plano
+  // costuma ser sequencial.
+  let matcher: ((text: string) => boolean) | undefined;
   if (event === 'PostToolUse' && FILE_TOOLS.has(toolName) && typeof input.file_path === 'string') {
     const name = baseName(input.file_path).toLowerCase();
-    const idx = next.planItems.findIndex(
-      (item) => item.status !== 'completed' && item.text.toLowerCase().includes(name)
-    );
+    matcher = (text) => text.includes(name);
+  }
+  if (event === 'PostToolUse' && toolName === 'Bash' && typeof input.command === 'string') {
+    const core = commandCore(input.command);
+    if (core.length >= 4) matcher = (text) => text.includes(core);
+  }
+  if (matcher) {
+    const idx = next.planItems.findIndex((item) => item.status !== 'completed' && matcher!(item.text.toLowerCase()));
     if (idx !== -1) {
       const planItems = next.planItems.map((item, i) => {
         if (i < idx) return { ...item, status: 'completed' as const };
-        if (i === idx) return { ...item, status: 'in_progress' as const };
+        if (i === idx) return { ...item, status: 'in_progress' as const, seen: true };
         return item;
       });
       next = { ...next, planItems, lastUpdated: Date.now() };
     }
   }
 
-  // Estimativa 2: o Claude terminou o turno depois de ter executado coisas do plano.
-  // Sem lista própria não dá para saber passo a passo, então conclui o que sobrou.
-  // (Se ele parou só para fazer uma pergunta, isso adianta o painel; a próxima lista corrige.)
-  if (event === 'Stop' && (next.planActions ?? 0) > 0 && next.planItems.some((i) => i.status !== 'completed')) {
-    const planItems = next.planItems.map((item) => ({ ...item, status: 'completed' as const }));
+  // Fim do turno depois de executar coisas do plano: o passo com evidência conta como feito.
+  // Os passos sem nenhuma evidência não são marcados como feitos: ficam "não confirmados",
+  // para o painel não afirmar o que não viu. Uma evidência num turno seguinte corrige.
+  if (event === 'Stop' && (next.planActions ?? 0) > 0 && next.planItems.some((i) => i.status === 'pending' || i.status === 'in_progress')) {
+    const planItems = next.planItems.map((item) => {
+      if (item.status === 'completed' || item.status === 'unconfirmed') return item;
+      return { ...item, status: item.seen ? ('completed' as const) : ('unconfirmed' as const) };
+    });
     next = { ...next, planItems, lastUpdated: Date.now() };
   }
 
