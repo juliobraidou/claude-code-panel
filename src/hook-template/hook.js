@@ -49,7 +49,8 @@ function postEvent(port, payload) {
           'Content-Type': 'application/json',
           'Content-Length': Buffer.byteLength(data),
         },
-        timeout: 1500,
+        // O servidor local responde em ~10 ms; se o VS Code travar, não segura o Claude.
+        timeout: 500,
       },
       (res) => {
         res.on('data', () => {});
@@ -158,10 +159,11 @@ async function main() {
   }
 
   // Única vez em que o hook fala com o Claude (não só observa): logo depois que você
-  // aprova o plano, pede (1) uma lista de tarefas com um item por passo, que faz o painel
-  // marcar as fases com precisão enquanto o modo auto executa, e (2) que a mensagem final
-  // venha em três blocos (feito / testes / falta), que o painel mostra como resumo.
-  // Custa um parágrafo curto por plano. Para desligar, defina CLAUDE_PANEL_NO_NUDGE=1.
+  // aprova o plano, pede que a mensagem final seja um resumo curto (feito / testes /
+  // falta), que o painel mostra. Ele substitui o fechamento normal, então sai mais barato
+  // que um fechamento comum. Não pede lista de tarefas: medido em 20 sessões, as
+  // ferramentas de tarefa não estavam disponíveis e o pedido só gerava explicações.
+  // Custa ~70 tokens por plano. Para desligar, defina CLAUDE_PANEL_NO_NUDGE=1.
   let output = '';
   if (
     payload.hook_event_name === 'PostToolUse' &&
@@ -172,11 +174,10 @@ async function main() {
       hookSpecificOutput: {
         hookEventName: 'PostToolUse',
         additionalContext:
-          'Plan approved. Before starting, create a task list with one task per plan step ' +
-          '(TodoWrite or TaskCreate, whichever you have), and mark each task completed as soon ' +
-          'as you finish it (a side panel tracks this list). When everything is done, end your ' +
-          "final message with a short summary in the user's language, in three sections: what " +
-          'was built (routes, files), what the tests covered, and what is still unverified or missing.',
+          "Plan approved. When all is done, make your final message only a summary in the user's " +
+          'language: Feito: <files/changes>. Testes: <what ran, result>. Falta: <unverified or ' +
+          'none>. 3-8 short lines; use the extra lines only for pending items. No other recap. ' +
+          'Only after this plan; later turns reply normally.',
       },
     });
   }

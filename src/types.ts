@@ -53,6 +53,16 @@ export interface TimelineAction {
   status: ActionStatus;
 }
 
+// Um plano/trabalho anterior guardado para revisão: a checklist final e o resumo.
+export interface HistoryEntry {
+  id: string;
+  title: string;
+  items: PlanItem[];
+  source?: 'plan' | 'todo';
+  summary?: { text: string; at: number };
+  archivedAt: number;
+}
+
 export interface PanelState {
   planItems: PlanItem[];
   // De onde veio a checklist: 'plan' = extraída do texto do plano (ExitPlanMode),
@@ -66,15 +76,22 @@ export interface PanelState {
   turnActions?: number;
   // Mensagem final do Claude quando terminou um turno de trabalho com um plano na tela.
   summary?: { text: string; at: number };
+  // Trabalhos anteriores, do mais recente para o mais antigo. Sobrevive ao /clear.
+  history: HistoryEntry[];
   actions: TimelineAction[];
   running: boolean;
   lastUpdated: number;
   notification?: string;
 }
 
-export function createEmptyState(): PanelState {
+// O que sobrevive a fechar o VS Code: o plano na tela, o resumo e o histórico. Ações,
+// "rodando" e avisos são do momento e não fazem sentido depois de reabrir.
+export type PersistedState = Pick<PanelState, 'planItems' | 'planSource' | 'planActions' | 'summary' | 'history'>;
+
+export function createEmptyState(history: HistoryEntry[] = []): PanelState {
   return {
     planItems: [],
+    history,
     actions: [],
     running: false,
     lastUpdated: Date.now(),

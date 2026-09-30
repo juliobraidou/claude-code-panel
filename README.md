@@ -99,6 +99,22 @@ O arquivo `.vscode/claude-code-panel.port` é criado no seu projeto para o
 `hook.js` descobrir em qual porta o servidor está — pode ser adicionado ao
 `.gitignore` do seu projeto.
 
+### Segurança do servidor local
+
+O servidor escuta só em `127.0.0.1` e guarda os resumos do Claude, que podem ter
+caminhos e trechos de código. Por isso ele não fala com páginas do navegador:
+
+- **Sem CORS:** uma página aberta no navegador não consegue ler `/state`.
+- **Só Host local:** pedidos com `Host` diferente de `127.0.0.1` ou `localhost`
+  são recusados (proteção contra DNS rebinding).
+- **POST só em JSON:** um formulário de navegador não consegue injetar eventos,
+  porque o `Content-Type: application/json` exige uma verificação prévia que o
+  servidor não autoriza.
+
+A instalação dos hooks também não duplica entradas: reinstalar deixa uma única
+cópia do hook do painel por evento, e os hooks de outras ferramentas ficam como
+estavam.
+
 ## Do modo plan para o auto
 
 Quando o plano é aprovado, o Claude Code chama `ExitPlanMode` com o texto do plano.
@@ -134,10 +150,26 @@ e há um plano na tela, o card **Resumo** mostra a mensagem final dele:
 - Uma resposta de conversa (sem ações) não sobrescreve o resumo, e um plano novo
   limpa o anterior.
 
+## Quanto a extensão gasta
+
+`npm run cost` lê os históricos que o Claude Code grava em `~/.claude/projects` (ou
+numa pasta passada como argumento: `npm run cost -- <pasta>`) e mostra:
+
+- **Custo da sessão mediana**, a preço de API do Claude Opus 5.5. Serve de régua: o
+  pedido da extensão custa perto de US$ 0,005 por plano.
+- **Pedidos do hook no contexto**: quantas vezes o pedido pós-plano entrou.
+- **Hook com retorno**: duração real do hook quando ele devolve o pedido. O Claude
+  Code só grava a duração nesse caso.
+- **Chamadas de lista de tarefas**: se o Claude atendeu o pedido da checklist.
+- **Resumos e fechamentos**: tokens de saída visíveis (sem o raciocínio) das
+  mensagens finais, com e sem o formato de resumo.
+
+Tudo é lido localmente; nada sai da máquina.
+
 ## Testes
 
 `npm test` roda o teste do servidor/estado/hook (inclui ler um histórico de sessão
-grande) e o do renderizador de markdown.
+grande), o do renderizador de markdown e o do medidor de custo (`scripts/test-cost.js`).
 
 ## Próximos passos possíveis
 

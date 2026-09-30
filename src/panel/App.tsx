@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { PanelState } from '../types';
+import { HistoryEntry, PanelState } from '../types';
 import { getVsCodeApi } from './vscodeApi';
 import { Markdown } from './Markdown';
 
@@ -13,6 +13,21 @@ function currentActivityLabel(state: PanelState): string | undefined {
     }
   }
   return state.running ? 'Pensando…' : undefined;
+}
+
+function PlanList({ items }: { items: PanelState['planItems'] }) {
+  return (
+    <ul className="plan-list">
+      {items.map((item) => (
+        <li key={item.id} className={`plan-item plan-item--${item.status}`}>
+          <span className="plan-item-icon">
+            {item.status === 'completed' ? '✓' : item.status === 'in_progress' ? '●' : '○'}
+          </span>
+          <span>{item.text}</span>
+        </li>
+      ))}
+    </ul>
+  );
 }
 
 function PlanSection({ items, source }: { items: PanelState['planItems']; source: PanelState['planSource'] }) {
@@ -35,16 +50,7 @@ function PlanSection({ items, source }: { items: PanelState['planItems']; source
       <div className="progress-track">
         <div className="progress-fill" style={{ width: `${pct}%` }} />
       </div>
-      <ul className="plan-list">
-        {items.map((item) => (
-          <li key={item.id} className={`plan-item plan-item--${item.status}`}>
-            <span className="plan-item-icon">
-              {item.status === 'completed' ? '✓' : item.status === 'in_progress' ? '●' : '○'}
-            </span>
-            <span>{item.text}</span>
-          </li>
-        ))}
-      </ul>
+      <PlanList items={items} />
     </div>
   );
 }
@@ -65,6 +71,50 @@ function SummarySection({ summary }: { summary: NonNullable<PanelState['summary'
         <button className="summary-toggle" onClick={() => setExpanded((v) => !v)}>
           {expanded ? 'Mostrar menos' : 'Mostrar tudo'}
         </button>
+      )}
+    </div>
+  );
+}
+
+function TrashIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+      <path d="M6.5 1h3a.5.5 0 0 1 .5.5V3h3.5a.5.5 0 0 1 0 1H13v9.5a1.5 1.5 0 0 1-1.5 1.5h-7A1.5 1.5 0 0 1 3 13.5V4h-.5a.5.5 0 0 1 0-1H6V1.5a.5.5 0 0 1 .5-.5ZM7 3h2V2H7v1ZM4 4v9.5a.5.5 0 0 0 .5.5h7a.5.5 0 0 0 .5-.5V4H4Zm2.5 2a.5.5 0 0 1 .5.5v5a.5.5 0 0 1-1 0v-5a.5.5 0 0 1 .5-.5Zm3 0a.5.5 0 0 1 .5.5v5a.5.5 0 0 1-1 0v-5a.5.5 0 0 1 .5-.5Z" />
+    </svg>
+  );
+}
+
+// Um trabalho anterior: recolhido mostra só título e data; aberto mostra a checklist e o resumo.
+function HistoryItem({ entry, onDelete }: { entry: HistoryEntry; onDelete: (id: string) => void }) {
+  const [open, setOpen] = React.useState(false);
+  const done = entry.items.filter((i) => i.status === 'completed').length;
+  const when = new Date(entry.archivedAt).toLocaleString('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+
+  return (
+    <div className="history-item">
+      <div className="history-row">
+        <button className="history-toggle" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
+          <span className="history-chevron">{open ? '▾' : '▸'}</span>
+          <span className="history-title">{entry.title}</span>
+          <span className="history-meta">
+            {entry.items.length > 0 ? `${done}/${entry.items.length} · ` : ''}
+            {when}
+          </span>
+        </button>
+        <button className="history-delete" title="Excluir do histórico" aria-label="Excluir do histórico" onClick={() => onDelete(entry.id)}>
+          <TrashIcon />
+        </button>
+      </div>
+      {open && (
+        <div className="history-body">
+          {entry.items.length > 0 && <PlanList items={entry.items} />}
+          {entry.summary && <SummarySection summary={entry.summary} />}
+        </div>
       )}
     </div>
   );
@@ -104,6 +154,19 @@ export function App() {
       <PlanSection items={state.planItems} source={state.planSource} />
 
       {state.summary && <SummarySection summary={state.summary} />}
+
+      {state.history?.length > 0 && (
+        <div className="history">
+          <div className="history-header">Anteriores</div>
+          {state.history.map((entry) => (
+            <HistoryItem
+              key={entry.id}
+              entry={entry}
+              onDelete={(id) => getVsCodeApi().postMessage({ type: 'deleteHistory', id })}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

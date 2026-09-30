@@ -8,6 +8,7 @@ function cleanText(raw: string): string {
     .replace(/\*\*(.+?)\*\*/g, '$1') // negrito
     .replace(/__(.+?)__/g, '$1')
     .replace(/\[(.+?)\]\(.+?\)/g, '$1') // links
+    .replace(/`([^`]+)`/g, '$1') // código inline
     .replace(/^\[[ xX]\]\s*/, '') // checkbox markdown
     .replace(/\s+/g, ' ')
     .trim()

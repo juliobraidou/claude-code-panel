@@ -2,23 +2,53 @@ import { countChanges, lineDiff } from './diff';
 import { baseName, parsePlanToItems } from './plan';
 import {
   ActionKind,
+  HistoryEntry,
   HookPayload,
   PanelState,
+  PersistedState,
   PlanItem,
   TimelineAction,
   createEmptyState,
 } from './types';
 
 const MAX_ACTIONS = 200;
+const MAX_HISTORY = 30;
 let counter = 0;
 function nextId(): string {
   counter += 1;
   return `a${Date.now()}_${counter}`;
 }
 
+// Primeira linha com texto do resumo, sem marcação de markdown, para servir de título.
+function titleFromSummary(text: string): string {
+  const line = text.split('\n').find((l) => l.replace(/[#*_`>\-\s]/g, '').length > 0) ?? '';
+  return truncate(line.replace(/^[#>\-*\s]+/, '').replace(/[*_`]/g, ''), 70);
+}
+
+// Guarda o trabalho que está na tela no histórico. Um plano proposto e nunca iniciado
+// (rejeitado ou substituído) não vale guardar; um que rodou ou ganhou resumo, sim.
+function archiveCurrent(state: PanelState): HistoryEntry[] {
+  const history = state.history ?? [];
+  const started = state.planItems.some((i) => i.status !== 'pending');
+  if (!state.summary && (state.planItems.length === 0 || !started)) return history;
+  const entry: HistoryEntry = {
+    id: nextId(),
+    title: state.planItems.length > 0 ? truncate(state.planItems[0].text, 70) : titleFromSummary(state.summary!.text),
+    items: state.planItems,
+    source: state.planSource,
+    summary: state.summary,
+    archivedAt: Date.now(),
+  };
+  return [entry, ...history].slice(0, MAX_HISTORY);
+}
+
+export function deleteHistoryEntry(state: PanelState, id: string): PanelState {
+  return { ...state, history: (state.history ?? []).filter((h) => h.id !== id), lastUpdated: Date.now() };
+}
+
 function shortPath(filePath: unknown): string {
   if (typeof filePath !== 'string') return '';
-  const parts = filePath.split('/');
+  const parts = filePath.split(/[\\/]/).filter(Boolean);
   return parts.slice(-2).join('/');
 }
 
@@ -132,9 +162,9 @@ export function applyHookEvent(state: PanelState, payload: HookPayload): PanelSt
   let next = applyPlanLogic(applyBase(state, payload), payload);
   const event = payload.hook_event_name;
 
-  // Resumo: a mensagem final do Claude vira o resumo, mas só se houve um plano na tela e o
-  // Claude trabalhou (editou, rodou comando) neste turno. Uma resposta de conversa não
-  // sobrescreve o resumo do último trabalho.
+  // Resumo: a mensagem final do Claude vira o resumo quando ele trabalhou (editou, rodou
+  // comando) neste turno, com ou sem plano na tela. Uma resposta de conversa não mexe no
+  // resumo. O resumo anterior não se perde: vai para o histórico.
   if (event === 'UserPromptSubmit') {
     next = { ...next, turnActions: 0 };
   }
@@ -145,10 +175,15 @@ export function applyHookEvent(state: PanelState, payload: HookPayload): PanelSt
     event === 'Stop' &&
     typeof payload.last_message === 'string' &&
     payload.last_message.trim() &&
-    next.planItems.length > 0 &&
     (next.turnActions ?? 0) > 0
   ) {
-    next = { ...next, summary: { text: payload.last_message.trim(), at: Date.now() } };
+    next = {
+      ...next,
+      history: next.summary ? archiveCurrent(next) : next.history,
+      summary: { text: payload.last_message.trim(), at: Date.now() },
+      // Um segundo Stop no mesmo turno não repete o resumo.
+      turnActions: 0,
+    };
   }
 
   // O aviso "precisa de permissão" só vale enquanto o Claude espera. Se voltou a rodar
@@ -199,6 +234,7 @@ function applyTaskTool(
 
     return {
       ...state,
+      history: previousDone ? archiveCurrent(state) : state.history,
       planItems: [...items, { id, text: subject, status: 'pending' }],
       planSource: 'todo',
       // Lista limpa = trabalho novo, então o resumo antigo sai. Ao só acrescentar tarefas
@@ -243,7 +279,14 @@ function applyPlanLogic(state: PanelState, payload: HookPayload): PanelState {
     const items = parsePlanToItems(input.plan);
     if (items.length === 0) return state;
     // Plano novo: o resumo do trabalho anterior não vale mais.
-    return { ...state, planItems: items, planSource: 'plan', summary: undefined, lastUpdated: Date.now() };
+    return {
+      ...state,
+      history: archiveCurrent(state),
+      planItems: items,
+      planSource: 'plan',
+      summary: undefined,
+      lastUpdated: Date.now(),
+    };
   }
 
   if (event === 'PostToolUse' && (toolName === 'TaskCreate' || toolName === 'TaskUpdate')) {
@@ -429,7 +472,29 @@ function findLastRunningIndex(actions: TimelineAction[], toolName: string): numb
   return -1;
 }
 
-export function resetState(): PanelState {
+export function toPersisted(state: PanelState): PersistedState {
+  return {
+    planItems: state.planItems,
+    planSource: state.planSource,
+    planActions: state.planActions,
+    summary: state.summary,
+    history: state.history,
+  };
+}
+
+export function restoreState(saved: Partial<PersistedState> | undefined): PanelState {
+  const empty = resetState(Array.isArray(saved?.history) ? saved!.history : []);
+  if (!saved) return empty;
+  return {
+    ...empty,
+    planItems: Array.isArray(saved.planItems) ? saved.planItems : [],
+    planSource: saved.planSource,
+    planActions: saved.planActions,
+    summary: saved.summary,
+  };
+}
+
+export function resetState(history: HistoryEntry[] = []): PanelState {
   counter = 0;
-  return createEmptyState();
+  return createEmptyState(history);
 }

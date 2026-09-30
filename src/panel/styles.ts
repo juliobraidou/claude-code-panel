@@ -134,6 +134,72 @@ export const styles = `
   .summary-toggle:hover {
     text-decoration: underline;
   }
+  .history {
+    margin-top: 18px;
+  }
+  .history-header {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--vscode-descriptionForeground);
+    margin-bottom: 6px;
+  }
+  .history-item {
+    border: 1px solid var(--vscode-widget-border, transparent);
+    background: var(--vscode-sideBar-background);
+    border-radius: 8px;
+    margin-bottom: 6px;
+  }
+  .history-row {
+    display: flex;
+    align-items: center;
+  }
+  .history-toggle {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    padding: 8px 10px;
+    border: none;
+    background: none;
+    color: var(--vscode-foreground);
+    font-size: 12px;
+    text-align: left;
+    cursor: pointer;
+  }
+  .history-chevron {
+    width: 10px;
+    flex-shrink: 0;
+  }
+  .history-title {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .history-meta {
+    flex-shrink: 0;
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+  }
+  .history-delete {
+    padding: 6px 10px;
+    border: none;
+    background: none;
+    color: var(--vscode-descriptionForeground);
+    cursor: pointer;
+    display: flex;
+  }
+  .history-delete:hover {
+    color: var(--vscode-errorForeground, #f14c4c);
+  }
+  .history-body {
+    padding: 0 10px 10px;
+  }
+  .history-body .summary {
+    padding: 10px;
+  }
   .md > :first-child {
     margin-top: 0;
   }

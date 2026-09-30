@@ -2,6 +2,9 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const HOOK_EVENTS = ['PreToolUse', 'PostToolUse', 'Notification', 'UserPromptSubmit', 'Stop', 'SubagentStop'];
+// Reconhece o nosso hook com barra normal ou invertida (o comando global no Windows usa "\").
+const PANEL_HOOK = /\.claude[\\/]+panel[\\/]+hook\.js/;
+const isPanelHook = (h: any) => typeof h?.command === 'string' && PANEL_HOOK.test(h.command);
 
 export interface InstallResult {
   settingsPath: string;
@@ -51,17 +54,17 @@ export function installHooks(
 
   for (const event of HOOK_EVENTS) {
     const list: any[] = Array.isArray(settings.hooks[event]) ? settings.hooks[event] : [];
-    const hasOurHook = list.some((entry: any) =>
-      Array.isArray(entry?.hooks) && entry.hooks.some((h: any) => typeof h?.command === 'string' && h.command.includes('.claude/panel/hook.js'))
-    );
-    if (!hasOurHook) {
-      alreadyConfigured = false;
-      list.push({
-        matcher: '*',
-        hooks: [{ type: 'command', command: hookCommand }],
-      });
-    }
-    settings.hooks[event] = list;
+    const ours = list.flatMap((entry: any) => (Array.isArray(entry?.hooks) ? entry.hooks.filter(isPanelHook) : []));
+    if (ours.length !== 1 || ours[0].command !== hookCommand) alreadyConfigured = false;
+
+    // Tira todas as cópias do nosso hook (instalações antigas deixavam duplicatas), sem
+    // mexer nos hooks de outras ferramentas, e põe uma única entrada no fim.
+    const others = list
+      .map((entry: any) =>
+        Array.isArray(entry?.hooks) ? { ...entry, hooks: entry.hooks.filter((h: any) => !isPanelHook(h)) } : entry
+      )
+      .filter((entry: any) => !Array.isArray(entry?.hooks) || entry.hooks.length > 0);
+    settings.hooks[event] = [...others, { matcher: '*', hooks: [{ type: 'command', command: hookCommand }] }];
   }
 
   fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n', 'utf8');

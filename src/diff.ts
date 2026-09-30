@@ -1,5 +1,7 @@
 import { DiffLine } from './types';
 
+const MAX_CELLS = 250_000;
+
 // Diff de linhas simples (LCS), sem dependências externas.
 // Suficiente para mostrar +/- no painel; não precisa ser um diff "de produção".
 export function lineDiff(oldText: string, newText: string, maxLines = 40): DiffLine[] {
@@ -8,6 +10,14 @@ export function lineDiff(oldText: string, newText: string, maxLines = 40): DiffL
 
   const n = a.length;
   const m = b.length;
+  // O LCS usa uma tabela n×m. Numa edição grande isso travaria o host da extensão, então
+  // acima do limite mostra só as linhas removidas e adicionadas, sem alinhar.
+  if (n * m > MAX_CELLS) {
+    return [
+      ...a.map((text) => ({ kind: 'remove' as const, text })),
+      ...b.map((text) => ({ kind: 'add' as const, text })),
+    ].slice(0, maxLines);
+  }
   const dp: number[][] = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
 
   for (let i = n - 1; i >= 0; i--) {
@@ -56,12 +66,8 @@ function trimContext(lines: DiffLine[], context: number): DiffLine[] {
     }
   });
   const out: DiffLine[] = [];
-  let lastKept = -2;
   lines.forEach((line, idx) => {
-    if (keep[idx]) {
-      out.push(line);
-      lastKept = idx;
-    }
+    if (keep[idx]) out.push(line);
   });
   return out.length ? out : lines.slice(0, 6);
 }

@@ -3,9 +3,12 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { installHooks, writePortFile } from './installHooks';
 import { startServer, PanelServer } from './server';
-import { PanelState } from './types';
+import { toPersisted } from './state';
+import { PanelState, PersistedState } from './types';
 
 let panelServer: PanelServer | undefined;
+const STATE_KEY = 'claudeCodePanel.state';
+let lastSaved: PersistedState | undefined;
 let currentProvider: ClaudeCodePanelProvider | undefined;
 
 export async function activate(context: vscode.ExtensionContext) {
@@ -74,7 +77,11 @@ export async function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.commands.registerCommand('claudeCodePanel.clearTimeline', async () => {
       if (!panelServer) return;
-      await fetch(`http://127.0.0.1:${panelServer.port}/clear`, { method: 'POST' }).catch(() => {});
+      await fetch(`http://127.0.0.1:${panelServer.port}/clear`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      }).catch(() => {});
     })
   );
 
@@ -88,8 +95,23 @@ export async function activate(context: vscode.ExtensionContext) {
 }
 
 async function bootServer(context: vscode.ExtensionContext, provider: ClaudeCodePanelProvider) {
+  // Salvo por projeto (workspaceState): cada pasta tem o próprio plano e histórico.
+  const initialState = context.workspaceState.get<PersistedState>(STATE_KEY);
+  lastSaved = initialState;
   panelServer = await startServer({
-    onStateChange: (state) => provider.pushState(state),
+    initialState,
+    onStateChange: (state) => {
+      provider.pushState(state);
+      // Grava só quando algo que persiste mudou; ações e "rodando" mudam o tempo todo.
+      const snapshot = toPersisted(state);
+      const changed =
+        !lastSaved ||
+        (Object.keys(snapshot) as (keyof PersistedState)[]).some((k) => snapshot[k] !== lastSaved![k]);
+      if (changed) {
+        lastSaved = snapshot;
+        void context.workspaceState.update(STATE_KEY, snapshot);
+      }
+    },
   });
 
   // Publica a porta em cada pasta aberta, para o hook.js localizar o servidor.
@@ -124,6 +146,9 @@ class ClaudeCodePanelProvider implements vscode.WebviewViewProvider {
     webviewView.webview.onDidReceiveMessage((message) => {
       if (message?.type === 'ready' && panelServer) {
         this.pushState(panelServer.getState());
+      }
+      if (message?.type === 'deleteHistory' && typeof message.id === 'string') {
+        panelServer?.deleteHistory(message.id);
       }
       if (message?.type === 'openFile' && typeof message.filePath === 'string') {
         const uri = vscode.Uri.file(message.filePath);

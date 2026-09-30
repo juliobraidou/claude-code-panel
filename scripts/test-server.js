@@ -282,7 +282,57 @@ async function main() {
   await post(port, '/hook', { hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_input: { command: 'ls' }, tool_response: {} });
   await post(port, '/hook', { hook_event_name: 'Stop', last_message: 'algo' });
   s = (await get(port, '/state')).body;
-  assert(!s.summary, 'sem plano na tela não há resumo');
+  assert(s.summary && s.summary.text === 'algo', 'sem plano na tela o trabalho também vira resumo');
+
+  await post(port, '/hook', { hook_event_name: 'UserPromptSubmit' });
+  await post(port, '/hook', { hook_event_name: 'PostToolUse', tool_name: 'Edit', tool_input: { file_path: '/p/x.js', old_string: 'a', new_string: 'b' }, tool_response: {} });
+  await post(port, '/hook', { hook_event_name: 'Stop', last_message: '## Corrigi o **bug** do login\n- detalhe' });
+  s = (await get(port, '/state')).body;
+  assert(s.summary.text.startsWith('## Corrigi'), 'novo trabalho troca o resumo');
+  assert(s.history[0].summary.text === 'algo' && s.history[0].items.length === 0, 'resumo anterior vai para o histórico');
+  await post(port, '/hook', { hook_event_name: 'Stop', last_message: 'outro stop no mesmo turno' });
+  s = (await get(port, '/state')).body;
+  assert(s.summary.text.startsWith('## Corrigi'), 'segundo Stop no mesmo turno não repete o resumo');
+  await post(port, '/hook', { hook_event_name: 'PreToolUse', tool_name: 'ExitPlanMode', tool_input: { plan } });
+  s = (await get(port, '/state')).body;
+  assert(s.history[0].title === 'Corrigi o bug do login', 'sem plano, o título vem do resumo sem markdown');
+
+  // --- Histórico: o trabalho anterior vira um item guardado quando começa um novo ---
+  await post(port, '/clear', {});
+  const base = (await get(port, '/state')).body.history.length;
+  await post(port, '/hook', { hook_event_name: 'PreToolUse', tool_name: 'ExitPlanMode', tool_input: { plan } });
+  s = (await get(port, '/state')).body;
+  assert(s.history.length === base, 'primeiro plano não gera histórico');
+  await post(port, '/hook', { hook_event_name: 'PreToolUse', tool_name: 'ExitPlanMode', tool_input: { plan: plan2 } });
+  s = (await get(port, '/state')).body;
+  assert(s.history.length === base, 'plano proposto e nunca iniciado não vai para o histórico');
+
+  await post(port, '/hook', { hook_event_name: 'UserPromptSubmit' });
+  await post(port, '/hook', { hook_event_name: 'PostToolUse', tool_name: 'ExitPlanMode', tool_input: { plan: plan2 }, tool_response: {} });
+  await post(port, '/hook', { hook_event_name: 'PostToolUse', tool_name: 'Write', tool_input: { file_path: '/p/a.js', content: 'x' }, tool_response: {} });
+  await post(port, '/hook', { hook_event_name: 'Stop', last_message: finalText });
+  await post(port, '/hook', { hook_event_name: 'PreToolUse', tool_name: 'ExitPlanMode', tool_input: { plan } });
+  s = (await get(port, '/state')).body;
+  assert(s.history.length === base + 1, 'plano novo arquiva o anterior');
+  assert(s.history[0].summary && s.history[0].summary.text === finalText, 'histórico guarda o resumo');
+  assert(s.history[0].items.length === 4 && s.history[0].items.every((i) => i.status === 'completed'), 'histórico guarda a checklist final');
+  assert(!s.summary && s.planItems.length === 3, 'plano atual começa limpo, sem o resumo antigo');
+
+  await post(port, '/clear', {});
+  s = (await get(port, '/state')).body;
+  assert(s.history.length === base + 1 && s.planItems.length === 0, '/clear limpa a tela mas mantém o histórico');
+
+  // TaskCreate depois de uma lista toda concluída também arquiva
+  await post(port, '/hook', { hook_event_name: 'PostToolUse', tool_name: 'TaskCreate', tool_input: { subject: 'A' }, tool_response: 'Task #1 created successfully: A' });
+  await post(port, '/hook', { hook_event_name: 'PostToolUse', tool_name: 'TaskUpdate', tool_input: { taskId: '1', status: 'completed' }, tool_response: '' });
+  await post(port, '/hook', { hook_event_name: 'PostToolUse', tool_name: 'TaskCreate', tool_input: { subject: 'B' }, tool_response: 'Task #1 created successfully: B' });
+  s = (await get(port, '/state')).body;
+  assert(s.history.length === base + 2 && s.history[0].title === 'A', 'lista de tarefas concluída é arquivada ao começar outra');
+
+  const removed = s.history[1].id;
+  await new Promise((r) => { srv.deleteHistory(removed); r(); });
+  s = (await get(port, '/state')).body;
+  assert(s.history.length === base + 1 && !s.history.some((h) => h.id === removed), 'excluir remove só o item escolhido');
 
   // --- hook.js lendo o histórico da sessão (transcript) de verdade ---
   const fs = require('fs');
@@ -328,6 +378,90 @@ async function main() {
 
   await srv.close();
 
+  // --- Reabrir o VS Code: o estado salvo volta (plano, resumo e histórico) ---
+  {
+    const a = await startServer({ preferredPort: 48050 });
+    await post(a.port, '/hook', { hook_event_name: 'UserPromptSubmit' });
+    await post(a.port, '/hook', { hook_event_name: 'PreToolUse', tool_name: 'ExitPlanMode', tool_input: { plan: plan2 } });
+    await post(a.port, '/hook', { hook_event_name: 'PostToolUse', tool_name: 'ExitPlanMode', tool_input: { plan: plan2 }, tool_response: {} });
+    await post(a.port, '/hook', { hook_event_name: 'PostToolUse', tool_name: 'Write', tool_input: { file_path: '/p/a.js', content: 'x' }, tool_response: {} });
+    await post(a.port, '/hook', { hook_event_name: 'Stop', last_message: finalText });
+    await post(a.port, '/hook', { hook_event_name: 'PreToolUse', tool_name: 'ExitPlanMode', tool_input: { plan } });
+    await post(a.port, '/hook', { hook_event_name: 'PostToolUse', tool_name: 'ExitPlanMode', tool_input: { plan }, tool_response: {} });
+    await post(a.port, '/hook', { hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'npm test' } });
+    const before = (await get(a.port, '/state')).body;
+    // Simula o que o workspaceState guarda (JSON) e fecha o servidor, como ao fechar o VS Code.
+    const saved = JSON.parse(JSON.stringify({ planItems: before.planItems, planSource: before.planSource, planActions: before.planActions, summary: before.summary, history: before.history }));
+    await a.close();
+
+    const b = await startServer({ preferredPort: 48060, initialState: saved });
+    const after = (await get(b.port, '/state')).body;
+    assert(JSON.stringify(after.planItems) === JSON.stringify(before.planItems), 'reabrir: plano atual volta igual');
+    assert(after.history.length === 1 && after.history[0].summary.text === finalText, 'reabrir: histórico e resumo antigo voltam');
+    assert(after.running === false && after.actions.length === 0, 'reabrir: não volta "rodando" nem ações presas');
+    await b.close();
+
+    const c = await startServer({ preferredPort: 48070 });
+    assert((await get(c.port, '/state')).body.history.length === 0, 'sem nada salvo, começa vazio');
+    await c.close();
+  }
+
+  // --- Auditoria: segurança, instalação sem duplicatas, diff grande, caminhos Windows ---
+  {
+    const srv2 = await startServer({ preferredPort: 48200 });
+    const raw = (opts, body) => new Promise((resolve, reject) => {
+      const req = http.request({ host: '127.0.0.1', port: srv2.port, agent: false, ...opts }, (res) => {
+        let out = ''; res.on('data', (c) => (out += c)); res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body: out }));
+      });
+      req.on('error', reject); if (body) req.write(body); req.end();
+    });
+    const leak = await raw({ path: '/state', method: 'GET', headers: { Origin: 'https://site-malicioso.example' } });
+    assert(!leak.headers['access-control-allow-origin'], 'sem CORS: página no navegador não consegue ler /state');
+    const rebind = await raw({ path: '/state', method: 'GET', headers: { Host: 'ataque.example:48200' } });
+    assert(rebind.status === 403, 'Host que não é local é recusado (DNS rebinding)');
+    const textPost = await raw({ path: '/hook', method: 'POST', headers: { 'Content-Type': 'text/plain' } }, JSON.stringify({ hook_event_name: 'Notification', message: 'falso' }));
+    const afterText = JSON.parse((await raw({ path: '/state', method: 'GET' })).body);
+    assert(textPost.status === 415 && !afterText.notification, 'POST sem JSON (formulário de navegador) é recusado');
+    await srv2.close();
+
+    const { installHooks } = require(path.join(__dirname, '..', 'dist-test', 'installHooks.js'));
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccp-inst-'));
+    fs.mkdirSync(path.join(root, '.claude'));
+    const winCmd = 'node "C:\\Users\\x\\.claude\\panel\\hook.js"';
+    const outro = { type: 'command', command: 'node outro-hook.js' };
+    fs.writeFileSync(path.join(root, '.claude', 'settings.json'), JSON.stringify({ hooks: {
+      PreToolUse: [
+        { matcher: '*', hooks: [{ type: 'command', command: winCmd }] },
+        { matcher: '*', hooks: [{ type: 'command', command: winCmd }] },
+        { matcher: 'Bash', hooks: [outro, { type: 'command', command: winCmd }] },
+      ],
+    } }));
+    const tpl = path.join(__dirname, '..', 'src', 'hook-template', 'hook.js');
+    const r1 = installHooks(root, tpl, 'global');
+    const cfg = JSON.parse(fs.readFileSync(r1.settingsPath, 'utf8'));
+    const cmds = (ev) => cfg.hooks[ev].flatMap((e) => e.hooks.map((h) => h.command));
+    assert(cmds('PreToolUse').filter((c) => /panel/.test(c)).length === 1, 'duplicatas do hook (caminho Windows) viram uma só');
+    assert(cmds('PreToolUse').includes('node outro-hook.js'), 'hooks de outras ferramentas ficam intactos');
+    assert(cmds('Stop').filter((c) => /panel/.test(c)).length === 1, 'eventos que faltavam ganham o hook');
+    const r2 = installHooks(root, tpl, 'global');
+    assert(r2.alreadyConfigured === true, 'segunda instalação reconhece que já está configurado');
+    fs.rmSync(root, { recursive: true, force: true });
+
+    const { lineDiff } = require(path.join(__dirname, '..', 'dist-test', 'diff.js'));
+    const big = Array.from({ length: 3000 }, (_, i) => 'linha ' + i).join('\n');
+    const t0 = Date.now();
+    const d = lineDiff(big, big + '\nnova');
+    assert(Date.now() - t0 < 200 && d.length <= 40, 'edição de 3.000 linhas não trava (sem tabela n×m)');
+
+    const srv3 = await startServer({ preferredPort: 48210 });
+    await post(srv3.port, '/hook', { hook_event_name: 'PreToolUse', tool_name: 'Edit', tool_input: { file_path: 'C:\\proj\\src\\panel\\App.tsx' } });
+    await post(srv3.port, '/hook', { hook_event_name: 'PreToolUse', tool_name: 'ExitPlanMode', tool_input: { plan: '1. Criar `scripts/a.js` agora\n2. Testar `b`' } });
+    const s3 = (await get(srv3.port, '/state')).body;
+    assert(s3.actions[0].label === 'Editando panel/App.tsx', 'rótulo usa caminho curto também no Windows');
+    assert(s3.planItems[0].text === 'Criar scripts/a.js agora', 'item do plano sem crases');
+    await srv3.close();
+  }
+
   // --- hook.js: só o ExitPlanMode aprovado devolve contexto para o Claude ---
   const { spawnSync } = require('child_process');
   const hookPath = path.join(__dirname, '..', 'src', 'hook-template', 'hook.js');
@@ -340,7 +474,7 @@ async function main() {
 
   const nudged = runHook({ hook_event_name: 'PostToolUse', tool_name: 'ExitPlanMode' });
   assert(nudged.status === 0, 'hook.js sai com código 0 mesmo sem servidor');
-  assert(/TodoWrite/.test(nudged.stdout) && JSON.parse(nudged.stdout).hookSpecificOutput.hookEventName === 'PostToolUse', 'ExitPlanMode aprovado devolve additionalContext válido');
+  assert(/Feito:/.test(nudged.stdout) && !/TodoWrite|TaskCreate/.test(nudged.stdout) && JSON.parse(nudged.stdout).hookSpecificOutput.hookEventName === 'PostToolUse', 'ExitPlanMode aprovado devolve additionalContext válido');
 
   const silent = runHook({ hook_event_name: 'PostToolUse', tool_name: 'Edit' });
   assert(silent.status === 0 && silent.stdout === '', 'outros eventos não devolvem nada ao Claude');
