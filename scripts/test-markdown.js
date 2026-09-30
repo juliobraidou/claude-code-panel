@@ -63,4 +63,12 @@ assert(!/\*\*/.test(out.replace(/<[^>]+>/g, '')), 'nenhum ** sobra no texto');
 const xss = html('<script>alert(1)</script> **ok**');
 assert(!/<script>/.test(xss) && /&lt;script&gt;/.test(xss), 'HTML no texto é escapado, não executa');
 
+{
+  const out = html('Feito: seção no `README.md`.\nTestes: `npm test` passou.\nFalta: conferir o painel\ne o histórico.');
+  assert((out.match(/<p>/g) || []).length === 3, 'Feito/Testes/Falta viram três parágrafos');
+  assert(out.includes('<strong>Testes: </strong>') && out.includes('<code>npm test</code>'), 'rótulo em negrito e código inline mantido');
+  assert(out.includes('conferir o painel e o histórico'), 'linha sem rótulo continua o parágrafo anterior');
+  assert(!html('Uma frase normal e comprida: com dois-pontos no meio.').includes('<strong>'), 'dois-pontos depois de frase longa não vira rótulo');
+}
+
 console.log('\nTeste do markdown concluído.');

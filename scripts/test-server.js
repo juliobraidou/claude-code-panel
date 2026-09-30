@@ -406,6 +406,45 @@ async function main() {
     await c.close();
   }
 
+  // --- Cenário do print: plano concluído, trabalho avulso depois, plano novo ---
+  {
+    const sv = await startServer({ preferredPort: 48220 });
+    const P = sv.port;
+    const planA = '1. Criar `scripts/a.js`\n2. Testar';
+    await post(P, '/hook', { hook_event_name: 'UserPromptSubmit' });
+    await post(P, '/hook', { hook_event_name: 'PreToolUse', tool_name: 'ExitPlanMode', tool_input: { plan: planA } });
+    await post(P, '/hook', { hook_event_name: 'PostToolUse', tool_name: 'ExitPlanMode', tool_input: { plan: planA }, tool_response: {} });
+    await post(P, '/hook', { hook_event_name: 'PostToolUse', tool_name: 'Write', tool_input: { file_path: '/p/scripts/a.js', content: 'x' }, tool_response: {} });
+    await post(P, '/hook', { hook_event_name: 'Stop', last_message: 'Feito: plano A.' });
+    // Trabalho avulso (auditoria) depois do plano concluído.
+    await post(P, '/hook', { hook_event_name: 'UserPromptSubmit' });
+    await post(P, '/hook', { hook_event_name: 'PostToolUse', tool_name: 'Edit', tool_input: { file_path: '/p/x.ts', old_string: 'a', new_string: 'b' }, tool_response: {} });
+    await post(P, '/hook', { hook_event_name: 'Stop', last_message: 'Auditoria: 7 correções.' });
+    let st = (await get(P, '/state')).body;
+    assert(st.history.length === 1 && st.history[0].title === 'Criar scripts/a.js' && st.history[0].summary.text === 'Feito: plano A.', 'plano concluído vai para o histórico com o próprio resumo');
+    assert(st.planItems.length === 0 && st.summary.text.startsWith('Auditoria'), 'trabalho avulso fica na tela sem o plano antigo');
+    await post(P, '/hook', { hook_event_name: 'PreToolUse', tool_name: 'ExitPlanMode', tool_input: { plan: '1. Passo novo\n2. Outro' } });
+    st = (await get(P, '/state')).body;
+    assert(st.history.length === 2 && st.history[0].title.startsWith('Auditoria'), 'resumo avulso arquivado com o título dele');
+    assert(st.history.filter((h) => h.title === 'Criar scripts/a.js').length === 1, 'o plano antigo não se repete no histórico');
+
+    // Plano em andamento em vários turnos: não sai da tela, só o resumo do meio é arquivado.
+    await post(P, '/hook', { hook_event_name: 'UserPromptSubmit' });
+    await post(P, '/hook', { hook_event_name: 'PostToolUse', tool_name: 'TaskCreate', tool_input: { subject: 'T1' }, tool_response: 'Task #1 created successfully: T1' });
+    await post(P, '/hook', { hook_event_name: 'PostToolUse', tool_name: 'TaskCreate', tool_input: { subject: 'T2' }, tool_response: 'Task #2 created successfully: T2' });
+    await post(P, '/hook', { hook_event_name: 'PostToolUse', tool_name: 'TaskUpdate', tool_input: { taskId: '1', status: 'completed' }, tool_response: '' });
+    await post(P, '/hook', { hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_input: { command: 'ls' }, tool_response: {} });
+    await post(P, '/hook', { hook_event_name: 'Stop', last_message: 'Metade feita.' });
+    await post(P, '/hook', { hook_event_name: 'UserPromptSubmit' });
+    await post(P, '/hook', { hook_event_name: 'PostToolUse', tool_name: 'TaskUpdate', tool_input: { taskId: '2', status: 'completed' }, tool_response: '' });
+    await post(P, '/hook', { hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_input: { command: 'ls' }, tool_response: {} });
+    await post(P, '/hook', { hook_event_name: 'Stop', last_message: 'Tudo feito.' });
+    st = (await get(P, '/state')).body;
+    assert(st.planItems.length === 2 && st.summary.text === 'Tudo feito.', 'plano que termina neste turno fica na tela com o resumo final');
+    assert(st.history[0].title === 'Metade feita.' && st.history[0].items.length === 0, 'resumo intermediário arquivado sozinho');
+    await sv.close();
+  }
+
   // --- Auditoria: segurança, instalação sem duplicatas, diff grande, caminhos Windows ---
   {
     const srv2 = await startServer({ preferredPort: 48200 });

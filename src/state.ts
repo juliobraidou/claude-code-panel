@@ -166,7 +166,8 @@ export function applyHookEvent(state: PanelState, payload: HookPayload): PanelSt
   // comando) neste turno, com ou sem plano na tela. Uma resposta de conversa não mexe no
   // resumo. O resumo anterior não se perde: vai para o histórico.
   if (event === 'UserPromptSubmit') {
-    next = { ...next, turnActions: 0 };
+    const planDone = next.planItems.length > 0 && next.planItems.every((i) => i.status === 'completed');
+    next = { ...next, turnActions: 0, planDoneBeforeTurn: planDone };
   }
   if (event === 'PostToolUse' && ACTION_TOOLS.has(payload.tool_name ?? '')) {
     next = { ...next, turnActions: (next.turnActions ?? 0) + 1 };
@@ -177,9 +178,18 @@ export function applyHookEvent(state: PanelState, payload: HookPayload): PanelSt
     payload.last_message.trim() &&
     (next.turnActions ?? 0) > 0
   ) {
+    // Plano concluído num turno anterior: vai para o histórico com o resumo dele e sai da
+    // tela, porque o trabalho novo não é dele. Plano em andamento fica na tela e só o resumo
+    // antigo é arquivado (com título tirado do próprio texto), para não repetir o plano.
+    const closePlan = Boolean(next.planDoneBeforeTurn) && next.planItems.length > 0;
+    let history = next.history;
+    if (closePlan) history = archiveCurrent(next);
+    else if (next.summary) history = archiveCurrent({ ...next, planItems: [] });
     next = {
       ...next,
-      history: next.summary ? archiveCurrent(next) : next.history,
+      history,
+      ...(closePlan ? { planItems: [], planSource: undefined, planActions: 0 } : {}),
+      planDoneBeforeTurn: false,
       summary: { text: payload.last_message.trim(), at: Date.now() },
       // Um segundo Stop no mesmo turno não repete o resumo.
       turnActions: 0,

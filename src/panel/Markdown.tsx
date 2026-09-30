@@ -4,6 +4,10 @@ import * as React from 'react';
 // do Claude: títulos, negrito, `código`, listas, blocos de código e parágrafos.
 // Tudo vira elemento React (nada de innerHTML), então o texto nunca executa como HTML.
 
+// Linha que começa com um rótulo curto ("Feito:", "Testes:", "Falta:") abre um parágrafo
+// próprio, com o rótulo em negrito: é o formato do resumo que o hook pede.
+const LABEL = /^([A-ZÀ-Ý][\p{L} ]{0,18}):\s+(.*)$/u;
+
 const INLINE = /(`[^`]+`|\*\*[^*]+\*\*|\[[^\]]+\]\([^)]+\))/g;
 
 function renderInline(text: string, keyPrefix: string): React.ReactNode[] {
@@ -27,7 +31,7 @@ type Block =
   | { kind: 'heading'; text: string }
   | { kind: 'code'; text: string }
   | { kind: 'list'; ordered: boolean; items: string[] }
-  | { kind: 'paragraph'; text: string };
+  | { kind: 'paragraph'; text: string; label?: string };
 
 function parseBlocks(source: string): Block[] {
   const lines = source.replace(/\r\n/g, '\n').split('\n');
@@ -86,9 +90,15 @@ function parseBlocks(source: string): Block[] {
       continue;
     }
 
+    const labeled = line.trim().match(LABEL);
     const paragraph: string[] = [];
+    if (labeled) {
+      paragraph.push(labeled[2]);
+      i++;
+    }
     while (
       i < lines.length &&
+      !LABEL.test(lines[i].trim()) &&
       lines[i].trim() &&
       !lines[i].trim().startsWith('```') &&
       !/^#{1,4}\s/.test(lines[i]) &&
@@ -98,7 +108,7 @@ function parseBlocks(source: string): Block[] {
       paragraph.push(lines[i].trim());
       i++;
     }
-    blocks.push({ kind: 'paragraph', text: paragraph.join(' ') });
+    blocks.push({ kind: 'paragraph', text: paragraph.join(' '), label: labeled?.[1] });
   }
 
   return blocks;
@@ -123,7 +133,12 @@ export function Markdown({ source }: { source: string }) {
             return block.ordered ? <ol key={key}>{items}</ol> : <ul key={key}>{items}</ul>;
           }
           default:
-            return <p key={key}>{renderInline(block.text, key)}</p>;
+            return (
+              <p key={key}>
+                {block.label && <strong>{block.label}: </strong>}
+                {renderInline(block.text, key)}
+              </p>
+            );
         }
       })}
     </div>

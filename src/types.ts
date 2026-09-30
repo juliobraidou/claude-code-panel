@@ -74,6 +74,9 @@ export interface PanelState {
   // Ações (edições, comandos) do turno atual; zera a cada mensagem sua. Serve para saber
   // se o Claude realmente trabalhou neste turno antes de tratar a resposta como resumo.
   turnActions?: number;
+  // O plano da tela já estava todo concluído quando este turno começou: o trabalho novo
+  // não faz parte dele.
+  planDoneBeforeTurn?: boolean;
   // Mensagem final do Claude quando terminou um turno de trabalho com um plano na tela.
   summary?: { text: string; at: number };
   // Trabalhos anteriores, do mais recente para o mais antigo. Sobrevive ao /clear.
