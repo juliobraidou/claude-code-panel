@@ -120,10 +120,10 @@
 
   <section aria-label="Números principais">
     <div class="stats">
-      <div class="stat"><span class="v">US$ 0,009</span><span class="l">por plano aprovado, com o pedido atual</span></div>
-      <div class="stat"><span class="v">0,20%</span><span class="l">do custo de uma sessão mediana (US$ 4,28)</span></div>
-      <div class="stat"><span class="v">0 tokens</span><span class="l">nos eventos em que o hook só observa</span></div>
-      <div class="stat"><span class="v">~56 ms</span><span class="l">por evento, 42 deles só para iniciar o Node</span></div>
+      <div class="stat"><span class="v">US$ 0,010</span><span class="l">por plano aprovado, com o painel aberto</span></div>
+      <div class="stat"><span class="v">0,24%</span><span class="l">do custo de uma sessão mediana (US$ 4,28)</span></div>
+      <div class="stat"><span class="v">0 tokens</span><span class="l">nos eventos em que o hook só observa e em projetos sem o painel</span></div>
+      <div class="stat"><span class="v">~65 ms</span><span class="l">por evento, 46 deles só para iniciar o Node</span></div>
     </div>
   </section>
 
@@ -138,7 +138,7 @@
       </div>
       <div class="rows" id="c1rows"></div>
       <div class="axis"><span></span><div id="c1axis"></div></div>
-      <figcaption class="note">US$ por plano. Cada barra soma a escrita da resposta e as releituras dela no cache nas chamadas seguintes da sessão (média medida: 63,5 chamadas depois de cada plano).</figcaption>
+      <figcaption class="note">US$ por plano. Cada barra soma a escrita da resposta e as releituras dela no cache nas chamadas seguintes da sessão (média medida: 88 chamadas depois de cada plano).</figcaption>
     </figure>
   </section>
 
@@ -148,21 +148,22 @@
     <figure class="chart" id="c2" style="margin:0">
       <div class="legend">
         <span><i class="sw" style="background:var(--depois)"></i>Mediana de 25 execuções</span>
-        <span><i style="width:14px;border-top:2px dashed var(--mark);opacity:.55;display:inline-block"></i>Node vazio: 42 ms</span>
+        <span><i style="width:14px;border-top:2px dashed var(--mark);opacity:.55;display:inline-block"></i>Node vazio: 46 ms</span>
       </div>
       <div class="rows" id="c2rows"></div>
       <div class="axis"><span></span><div id="c2axis"></div></div>
-      <figcaption class="note">Milissegundos. As quatro primeiras barras são o teste local (25 execuções); a última é a duração que o Claude Code gravou nas sessões reais. O Stop de 469 ms é o pior caso do teste: sem histórico para ler, o hook espera 400 ms e tenta de novo. No uso real o histórico existe e ele fica perto dos outros.</figcaption>
+      <figcaption class="note">Milissegundos. As quatro primeiras barras são o teste local (25 execuções); a última é a duração que o Claude Code gravou nas sessões reais. O Stop de 472 ms é o pior caso do teste: sem histórico para ler, o hook espera 400 ms e tenta de novo. No uso real o histórico existe e ele fica perto dos outros.</figcaption>
     </figure>
   </section>
 
   <section>
     <h2>O que os dados mostram</h2>
     <div class="findings">
-      <div class="finding"><span class="pill ok">ok</span><div><h3>O resumo curto corta 66% do custo por plano</h3><p>O resumo em três seções saía com mediana de 673 tokens (9 casos). O formato Feito/Testes/Falta mediu 157 e 208 tokens nas duas vezes em que rodou depois de um plano. A projeção inicial era de 75 tokens, e o valor real ficou mais que o dobro, mas continua bem abaixo de um fechamento normal, que tem mediana de 584 tokens.</p></div></div>
+      <div class="finding"><span class="pill ok">ok</span><div><h3>O resumo curto corta 66% do custo por plano</h3><p>O resumo em três seções saía com mediana de 673 tokens (9 casos). O formato Feito/Testes/Falta mediu 157 e 208 tokens nas duas vezes em que rodou depois de um plano. A projeção inicial era de 75 tokens, e o valor real ficou mais que o dobro, mas continua bem abaixo de um fechamento normal, que tem mediana de 589 tokens.</p></div></div>
       <div class="finding"><span class="pill at">atenção</span><div><h3>A lista de tarefas saiu do pedido</h3><p>Em 8 pedidos, o Claude nunca chamou TaskCreate ou TodoWrite, porque as ferramentas não estavam disponíveis. O pedido passou a trazer só o resumo, e caiu de 182 para 131 tokens.</p></div></div>
-      <div class="finding"><span class="pill ok">ok</span><div><h3>O pedido é uma fração mínima do contexto</h3><p>São 131 tokens contra uma mediana de 234.380 tokens lidos por chamada: 0,06% do contexto.</p></div></div>
-      <div class="finding"><span class="pill at">atenção</span><div><h3>O tempo pesa mais que o dinheiro</h3><p>São cerca de 113 ms por chamada de ferramenta (antes e depois). Numa sessão mediana de 65 chamadas, isso dá uns 7 segundos no total. Dos 56 ms de cada evento, 42 são só a inicialização do Node. Em uso real, o hook que devolve o pedido mediu 161 ms de mediana (8 execuções, de 146 a 226 ms).</p></div></div>
+      <div class="finding"><span class="pill ok">ok</span><div><h3>Sem o painel aberto, o custo é zero</h3><p>O hook só pede o resumo quando o painel do projeto recebeu o evento. Em projetos onde o painel não está aberto, mesmo com a instalação para todos os projetos, ele só observa e o Claude responde do jeito normal.</p></div></div>
+      <div class="finding"><span class="pill ok">ok</span><div><h3>O pedido é uma fração mínima do contexto</h3><p>São 131 tokens contra uma mediana de 237.110 tokens lidos por chamada: 0,06% do contexto.</p></div></div>
+      <div class="finding"><span class="pill at">atenção</span><div><h3>O tempo pesa mais que o dinheiro</h3><p>São cerca de 130 ms por chamada de ferramenta (antes e depois). Numa sessão mediana de 65 chamadas, isso dá uns 8 segundos no total. Dos 65 ms de cada evento, 46 são só a inicialização do Node. O ExitPlanMode leva 77 ms porque espera a resposta do painel antes de decidir se pede o resumo. Em uso real, o hook que devolve o pedido mediu 161 ms de mediana (8 execuções, de 146 a 226 ms).</p></div></div>
     </div>
   </section>
 
@@ -175,9 +176,9 @@
           <tr><td>Caracteres por token</td><td class="n">2,32</td><td>222 respostas só de texto: tamanho dividido pelos tokens de saída visíveis (sem raciocínio)</td></tr>
           <tr><td>Pedido do hook, antes / depois</td><td class="n">422 → 303 car.<br>182 → 131 tok</td><td>Saída real do <code>hook.js</code> no evento ExitPlanMode</td></tr>
           <tr><td>Resumo em três seções</td><td class="n">mediana 673 tok<br>415 a 2.164</td><td>9 mensagens finais com esse formato, tokens de saída medidos</td></tr>
-          <tr><td>Fechamento normal</td><td class="n">mediana 584 tok</td><td>221 mensagens finais sem o formato</td></tr>
+          <tr><td>Fechamento normal</td><td class="n">mediana 589 tok</td><td>Mensagens finais sem o formato de resumo</td></tr>
           <tr><td>Resumo no formato novo</td><td class="n">157 e 208 tok</td><td>As duas mensagens finais reais depois de um plano com o pedido novo (mediana 183)</td></tr>
-          <tr><td>Chamadas depois do pedido</td><td class="n">média 63,5</td><td>8 pedidos do hook: 140, 124, 65, 36, 14, 6, 63 e 60 chamadas até o fim da sessão</td></tr>
+          <tr><td>Chamadas depois do pedido</td><td class="n">média 88</td><td>8 pedidos do hook: 189, 173, 114, 85, 14, 6, 63 e 60 chamadas até o fim da sessão</td></tr>
           <tr><td>Duração real do hook com retorno</td><td class="n">mediana 161 ms</td><td>8 registros <code>hook_success</code> gravados pelo Claude Code</td></tr>
           <tr><td>Chamadas de lista de tarefas</td><td class="n">0</td><td>Todas as chamadas de ferramenta das 21 sessões, depois de 8 pedidos</td></tr>
           <tr><td>Sessão mediana</td><td class="n">US$ 4,28<br>65 chamadas</td><td>Uso real de 19 sessões com chamadas, a preço Opus 5.5</td></tr>
@@ -194,7 +195,7 @@
       <li>Num plano Pro ou Max não existe cobrança por token. Os tokens contam para o limite de uso, e o dólar aqui serve como régua de comparação.</li>
       <li>As sessões usaram o Opus 5 e o Opus 5.5. Todas foram precificadas como Opus 5.5.</li>
       <li>A latência do teste foi medida nesta máquina, contra um servidor de teste local. O Claude Code só grava a duração real quando o hook devolve algo.</li>
-      <li>As releituras dependem do tamanho da conversa: quanto mais longa a sessão depois do plano, mais o pedido e o resumo são relidos do cache.</li>
+      <li>As releituras dependem do tamanho da conversa: quanto mais longa a sessão depois do plano, mais o pedido e o resumo são relidos do cache. A média de 88 é puxada por esta própria sessão de desenvolvimento, que é longa; numa conversa curta o custo por plano fica perto de US$ 0,006.</li>
     </ul>
   </section>
 </div>
@@ -247,15 +248,15 @@
   }
 
   render({
-    chart: 'c1', rows: 'c1rows', axis: 'c1axis', max: 0.025, fmt: fmtUsd,
-    ticks: [0, 0.005, 0.01, 0.015, 0.02, 0.025], tick: function (t) { return t === 0 ? '0' : t.toFixed(3).replace('.', ','); },
+    chart: 'c1', rows: 'c1rows', axis: 'c1axis', max: 0.03, fmt: fmtUsd,
+    ticks: [0, 0.01, 0.02, 0.03], tick: function (t) { return t === 0 ? '0' : t.toFixed(3).replace('.', ','); },
     data: [
-      { name: 'Resumo final', sub: 'saída + releituras', ref: 0.0191, bars: [
-        { cls: 'antes', label: 'antes', v: 0.0220, detail: '673 tokens' },
-        { cls: 'depois', label: 'agora', v: 0.0060, detail: '~183 tokens (2 medidas)' } ] },
+      { name: 'Resumo final', sub: 'saída + releituras', ref: 0.0222, bars: [
+        { cls: 'antes', label: 'antes', v: 0.0253, detail: '673 tokens' },
+        { cls: 'depois', label: 'agora', v: 0.0069, detail: '~183 tokens (2 medidas)' } ] },
       { name: 'Pedido do hook', sub: 'entrada + releituras', bars: [
-        { cls: 'antes', label: 'antes', v: 0.0038, detail: '182 tokens' },
-        { cls: 'depois', label: 'agora', v: 0.0027, detail: '131 tokens' } ] },
+        { cls: 'antes', label: 'antes', v: 0.0047, detail: '182 tokens' },
+        { cls: 'depois', label: 'agora', v: 0.0034, detail: '131 tokens' } ] },
       { name: 'Lista de tarefas', sub: '0 chamadas medidas', bars: [
         { cls: 'antes', label: 'antes', v: 0, detail: 'nenhuma chamada em 21 sessões' },
         { cls: 'depois', label: 'agora', v: 0, detail: 'o pedido não pede mais a lista' } ] }
@@ -266,11 +267,11 @@
     chart: 'c2', rows: 'c2rows', axis: 'c2axis', max: 500, fmt: function (v) { return v + ' ms'; },
     ticks: [0, 125, 250, 375, 500], tick: function (t) { return String(t); },
     data: [
-      { name: 'PreToolUse', ref: 42, bars: [{ cls: 'depois', label: 'mediana', v: 57, detail: 'p90 66 ms' }] },
-      { name: 'PostToolUse', ref: 42, bars: [{ cls: 'depois', label: 'mediana', v: 56, detail: 'p90 59 ms' }] },
-      { name: 'ExitPlanMode', sub: 'devolve o pedido', ref: 42, bars: [{ cls: 'depois', label: 'mediana', v: 55, detail: 'p90 62 ms' }] },
-      { name: 'Stop', sub: 'pior caso do teste', ref: 42, bars: [{ cls: 'depois', label: 'mediana', v: 469, detail: 'inclui 400 ms de nova tentativa' }] },
-      { name: 'ExitPlanMode', sub: 'uso real, 8 vezes', ref: 42, bars: [{ cls: 'depois', label: 'mediana', v: 161, detail: 'de 146 a 226 ms' }] }
+      { name: 'PreToolUse', ref: 46, bars: [{ cls: 'depois', label: 'mediana', v: 65, detail: 'p90 82 ms' }] },
+      { name: 'PostToolUse', ref: 46, bars: [{ cls: 'depois', label: 'mediana', v: 65, detail: 'p90 79 ms' }] },
+      { name: 'ExitPlanMode', sub: 'espera o painel', ref: 46, bars: [{ cls: 'depois', label: 'mediana', v: 77, detail: 'p90 100 ms' }] },
+      { name: 'Stop', sub: 'pior caso do teste', ref: 46, bars: [{ cls: 'depois', label: 'mediana', v: 472, detail: 'inclui 400 ms de nova tentativa' }] },
+      { name: 'ExitPlanMode', sub: 'uso real, 8 vezes', ref: 46, bars: [{ cls: 'depois', label: 'mediana', v: 161, detail: 'de 146 a 226 ms' }] }
     ]
   });
 })();

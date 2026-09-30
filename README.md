@@ -73,7 +73,7 @@ Para a estimativa acertar mais, cite nos passos do plano os arquivos e comandos 
 
 ## Quanto isso gasta
 
-A pergunta mais comum antes de instalar é se a extensão aumenta o consumo de tokens. Resposta curta: quase nada, e em alguns casos reduz. Os números abaixo foram medidos em 21 sessões reais de Claude Code (atualizado em 30/09/2026), com o preço de API do Claude Opus 5.5 (US$ 4 por milhão de tokens de entrada, US$ 20 de saída e US$ 0,20 de leitura de cache).
+A pergunta mais comum antes de instalar é se a extensão aumenta o consumo de tokens. Resposta curta: quase nada, e em alguns casos reduz. Os números abaixo foram medidos em 21 sessões reais de Claude Code (atualizado em 30/09/2026, depois da checklist por evidência e da separação por conversa), com o preço de API do Claude Opus 5.5 (US$ 4 por milhão de tokens de entrada, US$ 20 de saída e US$ 0,20 de leitura de cache).
 
 ### Onde pode haver custo
 
@@ -81,28 +81,29 @@ A pergunta mais comum antes de instalar é se a extensão aumenta o consumo de t
 |---|---|---|
 | Em cada ação do Claude (ler, editar, rodar comando) | **0 tokens** | O hook só observa. Ele não devolve nada ao Claude. |
 | Ao aprovar um plano | **~131 tokens**, uma vez | O hook acrescenta um pedido curto: terminar com um resumo Feito/Testes/Falta. Só acontece se o painel estiver aberto nesse projeto. |
-| Resumo no fim do plano | **~183 tokens** de saída | Substitui a mensagem final normal, que tem mediana de 584 tokens. |
+| Resumo no fim do plano | **~183 tokens** de saída | Substitui a mensagem final normal, que tem mediana de 589 tokens. |
 | Mostrar o resumo no painel | **0 tokens** | O hook lê a mensagem final do histórico que o Claude Code já grava. Não há chamada extra ao modelo. |
 
 ### Em dinheiro, por plano aprovado
 
 | | Antes do ajuste | Agora |
 |---|---|---|
-| Resumo final, com releituras no cache | US$ 0,0220 | US$ 0,0060 |
-| Pedido do hook, com releituras no cache | US$ 0,0038 | US$ 0,0027 |
-| **Total por plano** | **US$ 0,026** | **US$ 0,009** |
-| Parte de uma sessão mediana (US$ 4,28) | 0,6% | **0,20%** |
+| Resumo final, com releituras no cache | US$ 0,0253 | US$ 0,0069 |
+| Pedido do hook, com releituras no cache | US$ 0,0047 | US$ 0,0034 |
+| **Total por plano** | **US$ 0,030** | **US$ 0,010** |
+| Projeto sem o painel aberto | o mesmo pedido | **US$ 0** |
+| Parte de uma sessão mediana (US$ 4,28) | 0,7% | **0,24%** |
 
-"Releituras" são as vezes em que esse texto é lido de novo do cache nas chamadas seguintes da conversa (em média, 63,5 chamadas depois do plano). Quanto mais longa a conversa depois do plano, mais releituras.
+"Releituras" são as vezes em que esse texto é lido de novo do cache nas chamadas seguintes da conversa (em média, 88 chamadas depois do plano). Quanto mais longa a conversa depois do plano, mais releituras: essa média é puxada por sessões longas de desenvolvimento, e numa conversa curta o total fica perto de US$ 0,006.
 
 ### Plano de assinatura ou API
 
-- **Pro ou Max:** não há cobrança por token. Os tokens contam para o seu limite de uso, e o impacto é do mesmo tamanho: cerca de 0,2% de uma sessão.
+- **Pro ou Max:** não há cobrança por token. Os tokens contam para o seu limite de uso, e o impacto é do mesmo tamanho: cerca de 0,25% de uma sessão.
 - **API:** a tabela acima é o valor que você pagaria.
 
 ### Tempo
 
-O hook roda antes e depois de cada ferramenta, e o Claude Code espera ele terminar. Cada execução leva cerca de 56 ms no teste local, 42 deles só para iniciar o Node. Em uso real, o hook que devolve o pedido mediu 161 ms. Numa sessão mediana isso soma uns 7 segundos, pouco perto do tempo que o próprio modelo leva para responder.
+O hook roda antes e depois de cada ferramenta, e o Claude Code espera ele terminar. Cada execução leva cerca de 65 ms no teste local, 46 deles só para iniciar o Node. Em uso real, o hook que devolve o pedido mediu 161 ms. Numa sessão mediana isso soma uns 8 segundos, pouco perto do tempo que o próprio modelo leva para responder.
 
 ### Desligar o pedido
 
